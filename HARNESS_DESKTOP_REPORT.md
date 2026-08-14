@@ -5,7 +5,7 @@
 This project is a separate Electron desktop shell; the upstream web application is not rewritten. The official runtime is pinned to `@deepseek-ai/dsh@0.1.0-rc.6` from [deepseek-harness](https://github.com/deepseek-ai/deepseek-harness). The desktop wrapper is maintained under this project and loads the official loopback Web UI at runtime.
 
 - Project root: this DeepSeekHarnessDesktop folder under the user Documents workspace.
-- Default workspace: %USERPROFILE%\Documents\ChatGPT\DeepSeekHarnessWorkspace\ (the parent may contain localized path components).
+- Default workspace: %USERPROFILE%\Documents\DeepSeekHarnessWorkspace\ (verified on this Windows account).
 - DSH home: `<workspace>\.dsh\`
 - Secure settings: Electron `safeStorage`/Windows DPAPI under the app user-data directory (the JSON stores ciphertext and preferences only).
 - Logs: Electron log directory, normally `%APPDATA%\DeepSeek Harness Desktop\logs\desktop.log`.
