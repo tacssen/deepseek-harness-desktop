@@ -197,7 +197,26 @@ if (!gotLock) {
     const moduleRoot = path.join(dshHome, 'node_modules');
     const appModules = runtimeNodeModules();
     try {
-      if (!fs.existsSync(moduleRoot)) fs.symlinkSync(appModules, moduleRoot, 'junction');
+      let current;
+      try { current = fs.realpathSync(moduleRoot); } catch { current = undefined; }
+      if (current && path.resolve(current) === path.resolve(appModules)) return;
+      if (current) {
+        // A junction from an earlier development/installed build can point at
+        // a stale dependency tree. Only remove a link, never a user directory.
+        const stat = fs.lstatSync(moduleRoot);
+        if (!stat.isSymbolicLink()) {
+          logger.warn('workspace node_modules exists as a real directory; leaving it untouched');
+          return;
+        }
+        fs.unlinkSync(moduleRoot);
+      } else {
+        // realpath fails for a broken junction; lstat still lets us replace
+        // that link without touching a normal directory.
+        try {
+          if (fs.lstatSync(moduleRoot).isSymbolicLink()) fs.unlinkSync(moduleRoot);
+        } catch { /* path does not exist */ }
+      }
+      fs.symlinkSync(appModules, moduleRoot, 'junction');
     } catch (error) {
       logger.warn(`workspace module junction unavailable: ${error.code || error.message}`);
       // A read-only installation can still use the official CLI without the
