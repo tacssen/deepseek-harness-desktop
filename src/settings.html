@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self';">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DeepSeek Harness Settings</title>
+  <style>
+    :root { color-scheme: dark; --bg:#0d1117; --panel:#161b22; --line:#30363d; --text:#e6edf3; --muted:#8b949e; --accent:#58a6ff; --good:#3fb950; --warn:#d29922; --bad:#f85149; }
+    * { box-sizing:border-box; } body { margin:0; padding:24px; background:var(--bg); color:var(--text); font:14px/1.45 "Segoe UI",system-ui,sans-serif; }
+    h1 { margin:0 0 5px; font-size:23px; } h2 { font-size:16px; margin:0 0 14px; } .sub { color:var(--muted); margin:0 0 20px; }
+    .grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; } .card { background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:17px; } .wide { grid-column:1 / -1; }
+    label { display:block; color:var(--muted); margin:11px 0 5px; } input, select { width:100%; color:var(--text); background:#0d1117; border:1px solid var(--line); border-radius:6px; padding:8px 9px; font:inherit; }
+    input:focus, select:focus { outline:1px solid var(--accent); border-color:var(--accent); } button { border:1px solid var(--line); border-radius:6px; padding:8px 13px; color:var(--text); background:#21262d; cursor:pointer; font:inherit; }
+    button:hover { background:#30363d; } button.primary { background:#238636; border-color:#2ea043; } button.primary:hover { background:#2ea043; }
+    .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; } .row > * { flex:1; } .row button { flex:0 0 auto; }
+    .status { margin-top:11px; padding:8px 10px; border-radius:6px; background:#21262d; color:var(--muted); min-height:35px; } .status.good { color:var(--good); } .status.warn { color:var(--warn); } .status.bad { color:var(--bad); }
+    .hint { color:var(--muted); font-size:12px; margin-top:4px; } .footer { display:flex; align-items:center; gap:10px; margin-top:18px; } #message { color:var(--muted); flex:1; } .danger { color:var(--bad); }
+    @media (max-width:760px) { .grid { grid-template-columns:1fr; } .wide { grid-column:auto; } }
+  </style>
+</head>
+<body>
+  <h1>DeepSeek Harness Settings</h1>
+  <p class="sub">API keys are encrypted with Windows DPAPI (Electron safeStorage). Full keys are never displayed or logged.</p>
+  <div class="grid">
+    <section class="card">
+      <h2>DeepSeek Provider</h2>
+      <label for="deepseekBaseURL">Base URL</label><input id="deepseekBaseURL" autocomplete="off" value="https://api.deepseek.com">
+      <label for="deepseekModel">Default model</label><select id="deepseekModel"><option value="deepseek-v4-flash">DeepSeek V4 Flash (default)</option><option value="deepseek-v4-pro">DeepSeek V4 Pro</option></select>
+      <label for="deepseekApiKey">DeepSeek API Key</label><input id="deepseekApiKey" type="password" autocomplete="new-password" placeholder="Leave blank to keep saved key"><div id="deepseekKeyState" class="hint">Not configured</div>
+      <div class="row" style="margin-top:12px"><button id="testDeepSeek">Test Connection</button><div id="deepseekStatus" class="status">Not tested</div></div>
+      <div class="hint">Test calls /models to validate the model ID, then performs a minimal chat completion.</div>
+    </section>
+    <section class="card">
+      <h2>Vision Bridge (independent)</h2>
+      <label><input id="visionEnabled" type="checkbox" style="width:auto;margin-right:6px"> Enable Vision Bridge</label>
+      <label for="visionBaseURL">Vision Base URL</label><input id="visionBaseURL" autocomplete="off" value="https://open.bigmodel.cn/api/paas/v4/chat/completions">
+      <label for="visionModel">Vision model</label><input id="visionModel" value="glm-4.6v-flash" autocomplete="off">
+      <label for="visionApiKey">Vision API Key</label><input id="visionApiKey" type="password" autocomplete="new-password" placeholder="Not provided; leave blank"><div id="visionKeyState" class="hint">Awaiting API Key</div>
+      <div class="row" style="margin-top:12px"><button id="testVision">Test Vision</button><div id="visionStatus" class="status">No key does not block DeepSeek</div></div>
+      <div class="hint">Images are validated as PNG/JPEG, <=5 MB, SHA-256 cached, and never sent to DeepSeek.</div>
+    </section>
+    <section class="card wide">
+      <h2>Workspace / permissions / logs</h2>
+      <label for="workspacePath">Workspace path (blank uses DeepSeekHarnessWorkspace)</label><input id="workspacePath" placeholder="C:\\Users\\...\\DeepSeekHarnessWorkspace" autocomplete="off">
+      <label><input id="allowShell" type="checkbox" style="width:auto;margin-right:6px"> Allow Harness safe shell tools (official sandbox and approval still apply)</label>
+      <label><input id="debugEnabled" type="checkbox" style="width:auto;margin-right:6px"> Debug logging (off by default; logs are redacted)</label>
+      <div class="hint">The official dsh Web server binds to 127.0.0.1 on a dynamic port. Electron owns its child process and stops it on exit.</div>
+      <div class="row" style="margin-top:12px"><button id="openLogs">Open log folder</button><button id="clearVisionCache">Clear Vision cache</button></div>
+    </section>
+  </div>
+  <div class="footer"><button class="primary" id="save">Save and restart Harness</button><button id="clear">Clear both API keys</button><button id="close">Close</button><span id="message"></span></div>
+  <script src="settings-renderer.js"></script>
+</body>
+</html>

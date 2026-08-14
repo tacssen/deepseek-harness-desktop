@@ -1,0 +1,12 @@
+{
+  "name": "@deepseek-harness/vision-plugin",
+  "version": "0.1.0",
+  "description": "Optional dsh vision_analyze tool using the GLM Vision endpoint.",
+  "type": "module",
+  "main": "index.mjs",
+  "license": "MIT",
+  "peerDependencies": {
+    "@deepseek-ai/dsh-tools": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-credentials": "0.1.0-rc.6"
+  }
+}

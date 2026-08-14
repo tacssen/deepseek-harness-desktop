@@ -1,0 +1,115 @@
+{
+  "name": "deepseek-harness-desktop",
+  "productName": "DeepSeek Harness Desktop",
+  "version": "0.1.0",
+  "description": "A small Windows desktop shell for the official DeepSeek Harness web profile.",
+  "main": "src/main.cjs",
+  "author": "DeepSeek Harness Desktop",
+  "license": "MIT",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test test/*.test.cjs",
+    "prove:tool": "node scripts/prove-tool.cjs",
+    "lint": "node --check src/main.cjs && node --check src/preload.cjs && node --check src/settings-preload.cjs && node --check src/settings-renderer.js && node --check src/vision-bridge.cjs && node --check vision-plugin/index.mjs",
+    "build": "npm run lint && node scripts/verify-build.cjs",
+    "prepare-runtime": "node scripts/prepare-runtime.cjs",
+    "dist": "npm run prepare-runtime && electron-builder --win nsis portable"
+  },
+  "dependencies": {
+    "@deepseek-ai/cordis-plugin-group": "1.0.1",
+    "@deepseek-ai/dsh": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-anonymous-user-id": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-atomic-write": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-fs": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-output-retention": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-sandbox": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-scope": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-session-title-llm": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-shell": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-spill": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-subagent-in-process-driver": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-subprocess": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-timeout": "0.1.0-rc.6",
+    "@deepseek-harness/vision-plugin": "file:vision-plugin",
+    "chokidar": "4.0.3",
+    "sharp": "0.35.3",
+    "yaml": "2.8.1",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "electron": "43.4.0",
+    "electron-builder": "26.0.12"
+  },
+  "build": {
+    "appId": "ai.deepseek.harness.desktop",
+    "productName": "DeepSeek Harness Desktop",
+    "artifactName": "DeepSeek-Harness-Desktop-${version}-${arch}.${ext}",
+    "asar": true,
+    "npmRebuild": false,
+    "buildDependenciesFromSource": false,
+    "asarUnpack": [
+      "node_modules/@deepseek-ai/**/*",
+      "node_modules/@deepseek-harness/**/*",
+      "node_modules/commander/**/*",
+      "node_modules/js-yaml/**/*",
+      "node_modules/yaml/**/*",
+      "node_modules/zod/**/*",
+      "node_modules/chokidar/**/*",
+      "node_modules/sharp/**/*",
+      "node_modules/@img/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "runtime-stage/node_modules",
+        "to": "dsh-runtime/node_modules",
+        "filter": ["**/*"]
+      }
+    ],
+    "files": [
+      "src/**/*",
+      "vision-plugin/**/*",
+      "scripts/**/*",
+      "package.json",
+      "node_modules/@deepseek-ai/dsh/**/*",
+      "node_modules/@deepseek-ai/**/*",
+      "node_modules/@deepseek-harness/**/*",
+      "node_modules/commander/**/*",
+      "node_modules/js-yaml/**/*",
+      "node_modules/yaml/**/*",
+      "node_modules/zod/**/*",
+      "node_modules/chokidar/**/*",
+      "node_modules/sharp/**/*",
+      "node_modules/@img/**/*"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "DeepSeek-Harness-Desktop-${version}-${arch}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "DeepSeek Harness",
+      "runAfterFinish": false
+    },
+    "portable": {
+      "artifactName": "DeepSeek-Harness-Desktop-${version}-portable.${ext}"
+    }
+  }
+}

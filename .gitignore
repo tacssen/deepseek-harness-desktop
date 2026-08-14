@@ -1,0 +1,11 @@
+﻿node_modules/
+runtime-stage/
+dist/
+.proof-home/
+manual-*-home/
+tool-proof-home/
+_upstream/
+manual-test-home/
+manual-plugin-home*/
+*.log
+*.tmp
