@@ -29,9 +29,23 @@ test('secure store persists preferences and DPAPI ciphertext without plaintext k
   const fakeSafeStorage = { isEncryptionAvailable: () => true, encryptString: (value) => Buffer.from(`cipher:${value}`, 'utf8'), decryptString: (buffer) => buffer.toString('utf8').replace(/^cipher:/, '') };
   const store = new SecureStore(fakeApp, fakeSafeStorage);
   store.load();
-  await store.save({ deepseek: { baseURL: 'https://api.deepseek.com', model: 'deepseek-v4-flash' }, deepseekApiKey: 'fixture-api-key' });
+  await store.save({
+    deepseek: { baseURL: 'https://api.deepseek.com', model: 'deepseek-v4-flash' },
+    vision: {
+      enabled: true,
+      provider: 'glm',
+      baseURL: 'https://open.bigmodel.cn/api/paas/v4/chat/completions',
+      model: 'glm-4.6v-flash',
+    },
+    deepseekApiKey: 'fixture-api-key',
+    visionApiKey: 'fixture-vision-key',
+  });
   const disk = await fs.readFile(path.join(dir, 'settings.secure.json'), 'utf8');
   assert.ok(!disk.includes('fixture-api-key'));
+  assert.ok(!disk.includes('fixture-vision-key'));
   assert.equal(store.getSecret('deepseekApiKey'), 'fixture-api-key');
+  assert.equal(store.getSecret('visionApiKey'), 'fixture-vision-key');
   assert.equal(store.publicSettings().deepseek.apiKeyConfigured, true);
+  assert.equal(store.publicSettings().vision.apiKeyConfigured, true);
+  assert.equal(store.publicSettings().vision.status, 'Vision Ready');
 });
