@@ -6,9 +6,10 @@ const path = require('node:path');
 const { spawn } = require('node:child_process');
 
 const root = path.resolve(__dirname, '..');
+const runtimeRoot = process.env.DSH_PROOF_RUNTIME === 'staged' ? path.join(root, 'runtime-stage') : root;
 const home = path.join(root, '.proof-home');
-const cli = path.join(root, 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js');
-const standard = path.join(root, 'node_modules', '@deepseek-ai', 'dsh', 'config', 'agent-presets', 'standard');
+const cli = path.join(runtimeRoot, 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js');
+const standard = path.join(runtimeRoot, 'node_modules', '@deepseek-ai', 'dsh', 'config', 'agent-presets', 'standard');
 const toolName = '@deepseek-harness/vision-plugin';
 
 function writeFixture() {
@@ -21,7 +22,7 @@ function writeFixture() {
   ].join('\n'));
   fs.writeFileSync(path.join(home, 'cordis.patch.yml'), '[]\n');
   const modules = path.join(home, 'node_modules');
-  try { fs.symlinkSync(path.join(root, 'node_modules'), modules, 'junction'); } catch {}
+  try { fs.symlinkSync(path.join(runtimeRoot, 'node_modules'), modules, 'junction'); } catch {}
   const preset = path.join(home, '.agent-presets', 'deepseek-desktop');
   fs.mkdirSync(path.dirname(preset), { recursive: true });
   fs.cpSync(standard, preset, { recursive: true });
