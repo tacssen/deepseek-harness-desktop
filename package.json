@@ -6,7 +6,7 @@
   "main": "src/main.cjs",
   "author": "Harness Workbench contributors",
   "license": "MIT",
-  "private": true,
+  "private": false,
   "type": "commonjs",
   "scripts": {
     "start": "electron .",
