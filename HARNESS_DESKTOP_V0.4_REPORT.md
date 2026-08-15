@@ -207,8 +207,8 @@ npm run dist
 
 | 产物 | SHA-256 | 说明 |
 | --- | --- | --- |
-| `dist/DeepSeek-Harness-Desktop-0.4.0-x64.exe` | `703DF37B5A62B3495CDDCCD30F02070EFA0D10FE1F199DBF036B8E9272D2B93B` | NSIS x64 |
-| `dist/DeepSeek-Harness-Desktop-0.4.0-portable.exe` | `B06FBA2072F468EE1B51F4B3546B7E3937AB35DF936D155926197991F448F377` | Portable x64 |
+| `dist/DeepSeek-Harness-Desktop-0.4.0-x64.exe` | `9AB54428EC93723D42A8F85FBBC607A51139CAD5F7925DC019CA7AD26839B97B` | NSIS x64 |
+| `dist/DeepSeek-Harness-Desktop-0.4.0-portable.exe` | `B222BD6AA984AE2FCFF36D761209FF89E62388533F8E304FA3337DFAF721F372` | Portable x64 |
 
 NSIS 和 Portable 均成功生成，runtime-stage 包含官方 dsh rc.6、Vision/Browser plugin。
 本机实际运行目标使用 `%LOCALAPPDATA%\Programs\DeepSeek Harness Desktop`，由最新
@@ -236,7 +236,7 @@ NSIS 在本机 unattended `/S` 的交互行为不稳定（返回非零/不总是
 ## 14. Git 本地状态
 
 - 当前分支：本地工作分支（无 remote）；
-- 实现 commit：`fba5358 feat: productize desktop workbench 0.4.0`；
+- 实现 commit：`ea49c54 feat: productize desktop workbench 0.4.0 (post-audit history)`；
 - 报告 commit：本报告随后作为独立本地 commit 加入；
 - 允许的操作：本地 commit；
 - 禁止的操作：`git push`、创建公开仓库、上传安装包、上传 API Key；
