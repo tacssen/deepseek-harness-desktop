@@ -191,6 +191,9 @@ Permission preset、Browser smoke、插件安装边界、Codex adapter、Shared 
 路径、RPC envelope 和 diff restore。DeepSeek 与 Vision connection test 也已真实调用并仅
 输出状态/model。没有把测试结果静态写死在 UI。
 
+另外运行 `npm.cmd run prove:tool`：`routable=true`、`toolVisible=true`、
+`turnCompleted=true`，事件包含真实 `turn/end:completed`；证明官方 Agent/tool 路径仍可用。
+
 ## 12. 构建、安装和哈希
 
 源码构建：
