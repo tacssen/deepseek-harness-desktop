@@ -21,3 +21,11 @@ installer-page*.png
 desktop-*.png
 settings-*.png
 screenshots/private/
+.harness-desktop/
+browser-profile/
+browser-data/
+.codex/
+codex-data/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal

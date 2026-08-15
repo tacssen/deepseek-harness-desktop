@@ -26,6 +26,7 @@ contextBridge.exposeInMainWorld('workbench', {
   continueFromCodex: (input) => invoke('continueFromCodex', input),
   prepareHandoffForCodex: (input) => invoke('prepareHandoffForCodex', input),
   openMarketplace: () => invoke('openMarketplace'),
+  openUsage: () => invoke('openUsage'),
   onState: (callback) => {
     if (typeof callback !== 'function') return () => {};
     const listener = (_event, nextState) => {

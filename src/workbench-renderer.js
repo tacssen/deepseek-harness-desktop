@@ -22,6 +22,7 @@
     diffs: [],
     stats: { tokenUsage: 0, contextBreakdown: {}, contextPressure: 0, sessionStats: {} },
     skills: [],
+    skillCatalog: [],
     mcpConnections: [],
     checkpoints: [],
     problems: [],
@@ -29,6 +30,10 @@
     gitDiff: '',
     terminalHistory: [],
     shared: { available: false },
+    agentLevel: { id: 'medium', label: '中', levels: [] },
+    permissions: {},
+    browser: {},
+    usage: null,
   };
   let state = structuredCloneSafe(defaultState);
   let layout = { railOpen: true, dockOpen: false, railWidth: 336, dockHeight: 250 };
@@ -49,12 +54,16 @@
     result.workspace = { ...result.workspace, ...asObject(next.workspace) };
     result.session = { ...result.session, ...asObject(next.session) };
     result.goal = next.goal && typeof next.goal === 'object' ? next.goal : null;
-    for (const key of ['todos', 'timeline', 'diffs', 'skills', 'mcpConnections', 'checkpoints', 'problems', 'logs', 'terminalHistory']) result[key] = asArray(next[key]);
+    for (const key of ['todos', 'timeline', 'diffs', 'skills', 'skillCatalog', 'mcpConnections', 'checkpoints', 'problems', 'logs', 'terminalHistory']) result[key] = asArray(next[key]);
     result.stats = { ...result.stats, ...asObject(next.stats) };
     result.stats.contextBreakdown = asObject(result.stats.contextBreakdown);
     result.stats.sessionStats = asObject(result.stats.sessionStats);
     result.gitDiff = text(next.gitDiff);
     result.shared = asObject(next.shared);
+    result.agentLevel = { ...result.agentLevel, ...asObject(next.agentLevel) };
+    result.permissions = { ...result.permissions, ...asObject(next.permissions) };
+    result.browser = { ...result.browser, ...asObject(next.browser) };
+    result.usage = next.usage && typeof next.usage === 'object' ? next.usage : null;
     return result;
   }
 
@@ -109,6 +118,14 @@
     setText('backendStatus', ready ? (state.session.running ? '运行中' : '已连接') : '连接中');
     setText('workspaceName', state.workspace.name || state.workspace.title || state.workspace.path?.split(/[\\/]/).pop() || 'DeepSeekHarnessWorkspace');
     setText('fallbackStatus', ready ? `本地后端已 Ready · 127.0.0.1:${empty(state.backend.port, '—')}` : '等待本地后端 Ready…');
+    const level = asObject(state.agentLevel);
+    setText('agentLevelLabel', `${text(level.label, '中')} · ${text(level.id, 'medium')}`);
+    const permission = asObject(state.permissions);
+    const usage = asObject(state.usage);
+    setText('usageLabel', usage.today ? `Usage ${formatCount(usage.today.totalTokens)}` : 'Usage');
+    $('agentLevelButton')?.setAttribute('title', `${text(level.description, 'Agent Level')} · effort ${text(level.reasoningEffort, 'high')} · ${number(level.maxSteps)} steps`);
+    $('usageButton')?.setAttribute('title', usage.today ? `Today ${number(usage.today.totalTokens)} tokens · Estimated ${text(usage.today.estimatedCost, '—')}` : 'Usage & Billing');
+    $('agentLevelButton')?.classList.toggle('is-warn', permission.browser && !asObject(state.browser).enabled);
     const fallback = $('coreFallback');
     if (fallback) fallback.toggleAttribute('hidden', ready);
 
@@ -258,13 +275,15 @@
   }
 
   function renderSkills() {
-    const skills = asArray(state.skills); setText('skillsCount', skills.length);
+    const runtimeSkills = asArray(state.skills);
+    const projectSkills = asArray(state.skillCatalog).map((skill) => ({ ...skill, description: skill.description || '项目/用户 Skills（只读发现）', catalog: true }));
+    const skills = [...projectSkills, ...runtimeSkills.filter((item) => !projectSkills.some((skill) => skill.name === item.name))]; setText('skillsCount', skills.length);
     const query = text($('skillSearch').value).trim().toLowerCase();
     const visible = skills.filter((skill) => !query || JSON.stringify(skill).toLowerCase().includes(query));
     const list = $('skillsList'); list.replaceChildren();
     if (!visible.length) { list.append(emptyNode(skills.length ? '没有匹配的 Skill。' : '没有暴露可用能力。')); }
     for (const skill of visible) {
-      const item = document.createElement('div'); item.className = 'skill-item'; const name = document.createElement('span'); name.className = 'skill-name'; name.textContent = text(skill.name || skill.id || skill.title, '未命名 Skill'); const meta = document.createElement('span'); meta.className = 'skill-meta'; if (skill.enabled !== undefined) meta.append(Object.assign(document.createElement('span'), { textContent: skill.enabled ? '已启用' : '已停用' })); const button = document.createElement('button'); button.type = 'button'; button.className = 'skill-invoke'; button.dataset.action = 'invoke-skill'; button.dataset.skillName = text(skill.name || skill.id); button.textContent = '调用'; meta.append(button); item.append(name, meta); list.append(item);
+      const item = document.createElement('div'); item.className = 'skill-item'; const name = document.createElement('span'); name.className = 'skill-name'; name.textContent = text(skill.name || skill.id || skill.title, '未命名 Skill'); const meta = document.createElement('span'); meta.className = 'skill-meta'; meta.append(Object.assign(document.createElement('span'), { textContent: skill.scope ? `${skill.scope} · ${skill.description || ''}` : (skill.enabled !== undefined ? (skill.enabled ? '已启用' : '已停用') : '') })); if (!skill.catalog) { const button = document.createElement('button'); button.type = 'button'; button.className = 'skill-invoke'; button.dataset.action = 'invoke-skill'; button.dataset.skillName = text(skill.name || skill.id); button.textContent = '调用'; meta.append(button); } item.append(name, meta); list.append(item);
     }
     const connections = asArray(state.mcpConnections); setText('mcpCount', `${connections.length} 个连接`); const mcp = $('mcpList'); mcp.replaceChildren(); if (!connections.length) mcp.append(emptyNode('没有 MCP 连接')); for (const connection of connections) { const item = document.createElement('div'); item.className = 'skill-item'; const name = document.createElement('span'); name.className = 'skill-name'; name.textContent = text(connection.name || connection.id, '未命名连接'); const status = document.createElement('span'); status.className = 'skill-meta'; status.textContent = text(connection.status || (connection.connected ? '已连接' : '未连接')); item.append(name, status); mcp.append(item); }
   }
@@ -345,7 +364,7 @@
 
   function handleAction(event) {
     const target = event.target.closest('[data-action]'); if (!target) return; const action = target.dataset.action;
-    if (action === 'checkpoint') checkpoint(); else if (action === 'open-workspace') invoke('openPath', { kind: 'workspace' }).catch((error) => toast(error.message, 'bad')); else if (action === 'open-project') openProject(); else if (action === 'continue-codex') continueCodex(); else if (action === 'handoff-codex') handoffCodex(); else if (action === 'marketplace') invoke('openMarketplace').catch((error) => toast(error.message, 'bad')); else if (action === 'open-settings') invoke('openSettings').catch((error) => toast(error.message, 'bad')); else if (action === 'invoke-skill') invokeSkill(target.dataset.skillName); else if (action === 'accept-diff' || action === 'revert-diff') diffAction(action, target.dataset.diffId);
+    if (action === 'checkpoint') checkpoint(); else if (action === 'open-workspace') invoke('openPath', { kind: 'workspace' }).catch((error) => toast(error.message, 'bad')); else if (action === 'open-project') openProject(); else if (action === 'continue-codex') continueCodex(); else if (action === 'handoff-codex') handoffCodex(); else if (action === 'marketplace') invoke('openMarketplace').catch((error) => toast(error.message, 'bad')); else if (action === 'open-settings') invoke('openSettings').catch((error) => toast(error.message, 'bad')); else if (action === 'open-usage') invoke('openUsage').catch((error) => toast(error.message, 'bad')); else if (action === 'invoke-skill') invokeSkill(target.dataset.skillName); else if (action === 'accept-diff' || action === 'revert-diff') diffAction(action, target.dataset.diffId);
   }
 
   function keyboard(event) {
@@ -370,7 +389,7 @@
     q('.mode-button').forEach((button) => button.addEventListener('click', () => modeSelected(button.dataset.mode)));
     q('[data-rail-tab]').forEach((button) => button.addEventListener('click', () => selectRailTab(button.dataset.railTab)));
     q('[data-dock-tab]').forEach((button) => button.addEventListener('click', () => { selectDockTab(button.dataset.dockTab); setDock(true); }));
-    $('railToggle').addEventListener('click', () => setRail(!layout.railOpen)); $('railClose').addEventListener('click', () => setRail(false)); $('dockClose').addEventListener('click', () => setDock(false)); $('fileSearchButton').addEventListener('click', () => openOverlay('fileSearchOverlay', 'fileSearchInput')); $('attachButton').addEventListener('click', attach); $('settingsButton').addEventListener('click', () => invoke('openSettings').catch((error) => toast(error.message, 'bad')));
+    $('railToggle').addEventListener('click', () => setRail(!layout.railOpen)); $('railClose').addEventListener('click', () => setRail(false)); $('dockClose').addEventListener('click', () => setDock(false)); $('fileSearchButton').addEventListener('click', () => openOverlay('fileSearchOverlay', 'fileSearchInput')); $('attachButton').addEventListener('click', attach); $('settingsButton').addEventListener('click', () => invoke('openSettings').catch((error) => toast(error.message, 'bad'))); $('agentLevelButton').addEventListener('click', () => invoke('openSettings').catch((error) => toast(error.message, 'bad'))); $('usageButton').addEventListener('click', () => invoke('openUsage').catch((error) => toast(error.message, 'bad')));
     $('goalForm').addEventListener('submit', goalSubmitted); $('terminalForm').addEventListener('submit', (event) => { event.preventDefault(); runTerminal($('terminalInput').value); }); $('skillSearch').addEventListener('input', () => renderSkills());
     $('fileSearchInput').addEventListener('input', (event) => { clearTimeout(searchTimer); searchTimer = setTimeout(() => searchFiles(event.target.value), 120); }); $('fileSearchInput').addEventListener('keydown', (event) => { if (event.key === 'Enter') { const selected = document.querySelector('.file-result.is-selected'); if (selected) { event.preventDefault(); insertFile(selected.dataset.filePath); } } });
     q('[data-close-overlay]').forEach((button) => button.addEventListener('click', () => closeOverlay(button.dataset.closeOverlay))); document.addEventListener('click', handleAction); document.addEventListener('keydown', keyboard);

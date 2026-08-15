@@ -23,6 +23,7 @@ async function main() {
   await fsp.copyFile(path.join(root, 'package.json'), path.join(stage, 'package.json'));
   await fsp.copyFile(path.join(root, 'package-lock.json'), path.join(stage, 'package-lock.json'));
   await fsp.cp(path.join(root, 'vision-plugin'), path.join(stage, 'vision-plugin'), { recursive: true });
+  await fsp.cp(path.join(root, 'browser-plugin'), path.join(stage, 'browser-plugin'), { recursive: true });
   // Spawning npm.cmd directly returns EINVAL on some Windows Node builds;
   // invoke npm's JS entrypoint with the current Node executable instead.
   const npm = process.platform === 'win32'
@@ -43,6 +44,7 @@ async function main() {
     path.join(stage, 'node_modules', '@deepseek-ai', 'dsh-scope'),
     path.join(stage, 'node_modules', '@deepseek-ai', 'dsh-timeout'),
     path.join(stage, 'node_modules', '@deepseek-harness', 'vision-plugin'),
+    path.join(stage, 'node_modules', '@deepseek-harness', 'browser-plugin'),
   ];
   const missing = required.filter((item) => !fs.existsSync(item));
   if (missing.length) throw new Error(`runtime staging is missing: ${missing.join(', ')}`);

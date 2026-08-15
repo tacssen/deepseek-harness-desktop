@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "currency": "USD",
+  "unit": "per_1m_tokens",
+  "source": "https://api-docs.deepseek.com/quick_start/pricing",
+  "updatedAt": "2026-08-15",
+  "note": "Estimated cost only. Provider billing pages remain authoritative.",
+  "providers": {
+    "deepseek-official": {
+      "models": {
+        "deepseek-v4-flash": { "input": 0.14, "output": 0.28, "cacheHit": 0.0028, "cacheMiss": 0.14 },
+        "deepseek-v4-pro": { "input": 0.435, "output": 0.87, "cacheHit": 0.003625, "cacheMiss": 0.435 }
+      }
+    }
+  }
+}

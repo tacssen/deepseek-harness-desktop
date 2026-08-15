@@ -29,6 +29,30 @@
   只有本地固定 allowlist、宽松许可证和合法 dsh manifest 同时通过时才允许安装；
 - 通过动态 127.0.0.1 回环端口连接桌面壳与 dsh 后端，不监听公网地址。
 
+## 0.4.0 产品层
+
+0.4.0 在不重写官方 Harness Agent 的前提下增加了桌面工作台能力：
+
+- **Agent Level**：低/中/高/极高/最高会分别改变工具并行度、最大 Agent 步数、
+  验证/修复策略；DeepSeek 原生 reasoning effort 目前只有 `high`/`max`，所以低、
+  中是 Desktop 执行预算策略，不会伪装成官方模型参数；
+- **Usage & Billing**：从真实 `assistant/message.usage` 和 Vision 响应统计 Token，
+  根据版本化 pricing metadata 计算 `Estimated Cost`。DeepSeek 官方公开余额接口
+  不可靠时页面会明确显示不可用并链接 Billing，不会编造余额；
+- **完整 Settings / Profile**：常规、外观、个性化、权限、Browser、数据隐私、
+  Advanced、About，以及不含密钥的 Profile 导入/导出；密钥仍只通过 Windows
+  DPAPI-backed Electron `safeStorage` 保存；
+- **Browser Agent**：独立的 Playwright 工具，使用应用专用隔离浏览器 Profile，
+  默认关闭，下载/上传需要确认；它与 Web Search 是不同能力。Computer Control
+  仍明确为 Deferred/off，不会伪造桌面控制；
+- **Skills / Plugin Center**：展示项目和允许读取的全局 Skills；插件市场默认只读，
+  只有本地固定 allowlist、固定版本、宽松许可证和合法 dsh manifest 同时通过才可安装；
+- **Codex Shared Project**：继续使用同一真实 Workspace/Git 工作树及 `.agents/`
+  handoff 文件；Codex 私有数据库只通过官方只读 app-server 按需读取，不篡改内部状态。
+
+详细验收、边界和构建哈希见 `HARNESS_DESKTOP_V0.4_REPORT.md`，新增产品层文档见
+`docs/v0.4-product-layer.md`。
+
 ## 快速开始（从源码）
 
 前置条件：

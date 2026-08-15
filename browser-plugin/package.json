@@ -1,0 +1,11 @@
+{
+  "name": "@deepseek-harness/browser-plugin",
+  "version": "0.1.0",
+  "description": "Optional Playwright browser tool for the DeepSeek Harness Desktop.",
+  "type": "module",
+  "main": "index.mjs",
+  "license": "MIT",
+  "peerDependencies": {
+    "@deepseek-ai/dsh-tools": "0.1.0-rc.6"
+  }
+}

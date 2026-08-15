@@ -33,10 +33,11 @@ function dataURL(buffer, mime) {
 }
 
 class VisionBridge {
-  constructor(app, store, logger) {
+  constructor(app, store, logger, { onUsage } = {}) {
     this.app = app;
     this.store = store;
     this.logger = logger;
+    this.onUsage = typeof onUsage === 'function' ? onUsage : undefined;
     this.memory = new Map();
     this.cacheDir = path.join(app.getPath('userData'), 'cache', 'vision');
   }
@@ -65,7 +66,8 @@ class VisionBridge {
     const cached = this.memory.get(hash) || await this.readCache(cacheFile);
     if (cached) return { ...cached, cached: true, sha256: imageHash };
     const response = await this.callProvider(settings.vision, key, dataURL(image.buffer, image.mime), prompt);
-    const result = { ok: true, status: 'Vision Ready', provider: settings.vision.provider, model: settings.vision.model, text: response.text, createdAt: new Date().toISOString() };
+    const result = { ok: true, status: 'Vision Ready', provider: settings.vision.provider, model: response.model || settings.vision.model, text: response.text, createdAt: new Date().toISOString() };
+    if (response.usage && this.onUsage) await this.onUsage({ ...response.usage, provider: settings.vision.provider, model: response.model || settings.vision.model, source: 'vision', requestAt: result.createdAt });
     this.memory.set(hash, result);
     await fsp.mkdir(this.cacheDir, { recursive: true }).catch(() => {});
     await fsp.writeFile(cacheFile, `${JSON.stringify(result)}\n`, 'utf8').catch(() => {});
@@ -79,7 +81,8 @@ class VisionBridge {
     const pixel = makePng(56, 56);
     try {
       const response = await this.callProvider(settings, key, dataURL(pixel, 'image/png'), 'Reply with the single word OK.');
-      return { ok: true, status: 'Vision Ready', model: settings.model, preview: response.text.slice(0, 120) };
+      if (response.usage && this.onUsage) await this.onUsage({ ...response.usage, provider: settings.provider, model: response.model || settings.model, source: 'vision-test', requestAt: new Date().toISOString() });
+      return { ok: true, status: 'Vision Ready', model: response.model || settings.model, preview: response.text.slice(0, 120) };
     } catch (error) {
       return { ok: false, status: 'Vision Error', code: error.code || 'VISION_REQUEST_FAILED', error: safeError(error) };
     }
@@ -101,7 +104,7 @@ class VisionBridge {
       if (!response.ok) throw Object.assign(new Error(`Vision provider HTTP ${response.status}`), { code: `HTTP_${response.status}` });
       const text = extractText(body);
       if (!text) throw Object.assign(new Error('Vision provider returned no text'), { code: 'EMPTY_RESPONSE' });
-      return { text };
+      return { text, usage: body?.usage || null, model: body?.model || settings.model };
     } catch (error) {
       if (error && error.name === 'AbortError') throw Object.assign(new Error('Vision provider timed out'), { code: 'TIMEOUT' });
       throw error;

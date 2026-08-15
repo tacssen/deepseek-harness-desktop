@@ -12,6 +12,16 @@
 - 明确第三方身份、隐私边界、动态路径要求以及 SiliconFlow/BigModel
   条款需人工确认。
 
+## [0.4.0] — 本地验收，未发布
+
+- 五级 Agent Level：Low/Medium/High/Extra High/Max，真实改变 Desktop 执行预算、并行工具和验证/修复策略；
+- Usage & Billing：真实 session/API usage、版本化 pricing metadata、Estimated Cost 和诚实的余额不可用状态；
+- 扩展 Settings、个性化、权限 preset、Profile 导入/导出、Data & Privacy、Advanced/About；
+- 独立 Playwright Browser plugin 和隔离浏览器 profile；Computer Control 保持 Deferred/off；
+- Skills catalog、Workbench 状态栏和安全插件市场继续复用官方 Harness 能力；
+- 保持真实 Workspace/Git/Codex handoff，不修改 Codex 私有数据库；
+- 增加 Browser/Usage/Agent/Profile/Permission 回归测试和本地 0.4.0 NSIS/Portable 产物。
+
 ## [0.3.0] — 本地验收，未发布
 
 - Open Existing Project 直接打开同一真实目录，不复制 Workspace；

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, WebContentsView, Menu, ipcMain, safeStorage, dialog, shell } = require('electron');
+const { app, BrowserWindow, WebContentsView, Menu, Tray, nativeImage, ipcMain, safeStorage, dialog, shell } = require('electron');
 const path = require('node:path');
 const os = require('node:os');
 const fs = require('node:fs');
@@ -11,6 +11,8 @@ const { Logger, redact } = require('./logger.cjs');
 const { VisionBridge } = require('./vision-bridge.cjs');
 const { WorkbenchService } = require('./workbench-service.cjs');
 const { MarketplaceService } = require('./marketplace-service.cjs');
+const { AppDataService } = require('./app-data-service.cjs');
+const { getAgentLevel, listAgentLevels } = require('./agent-levels.cjs');
 
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
@@ -20,11 +22,14 @@ if (!gotLock) {
   let harnessView;
   let settingsWindow;
   let marketplaceWindow;
+  let usageWindow;
+  let tray;
   let backend;
   let backendPort;
   let stopping = false;
   let logger;
   let store;
+  let appData;
   let vision;
   let workbench;
   let marketplace;
@@ -34,6 +39,7 @@ if (!gotLock) {
   const importDeepSeekKey = process.argv.includes('--import-deepseek-key-stdin');
   const importVisionKey = process.argv.includes('--import-vision-key-stdin');
   const testVisionOnce = process.argv.includes('--test-vision-once');
+  const testDeepSeekOnce = process.argv.includes('--test-deepseek-once');
   const workspaceArgument = process.argv.find((value) => value.startsWith('--workspace='));
   const workspaceOverride = workspaceArgument ? path.resolve(workspaceArgument.slice('--workspace='.length)) : null;
 
@@ -53,9 +59,19 @@ if (!gotLock) {
     logger.info(`DeepSeek Harness Desktop starting; Electron ${process.versions.electron}, Node ${process.versions.node}`);
     store = new SecureStore(app, safeStorage, (message) => logger.warn(message));
     store.load();
-    vision = new VisionBridge(app, store, logger);
+    appData = new AppDataService(app, logger);
+    appData.load();
+    vision = new VisionBridge(app, store, logger, { onUsage: (record) => appData.recordUsage(record).catch((error) => logger.warn(`vision usage write failed: ${error.code || error.message}`)) });
     if (testVisionOnce) {
       const result = await vision.test(store.publicSettings().vision);
+      process.stdout.write(`${JSON.stringify({ ok: result.ok, status: result.status, model: result.model, code: result.code })}\n`);
+      await logger.queue;
+      app.exit(result.ok ? 0 : 1);
+      return;
+    }
+    if (testDeepSeekOnce) {
+      await prepareWorkspace();
+      const result = await testDeepSeek();
       process.stdout.write(`${JSON.stringify({ ok: result.ok, status: result.status, model: result.model, code: result.code })}\n`);
       await logger.queue;
       app.exit(result.ok ? 0 : 1);
@@ -80,7 +96,8 @@ if (!gotLock) {
       return;
     }
     await prepareWorkspace();
-    workbench = new WorkbenchService({ app, logger, getPort: () => backendPort, getWorkspace: () => workspaceRoot });
+    applyLoginItemSetting();
+    workbench = new WorkbenchService({ app, logger, getPort: () => backendPort, getWorkspace: () => workspaceRoot, usage: appData, getPreferences: () => store.getPreferences() });
     marketplace = new MarketplaceService({ app, logger, getWorkspace: () => workspaceRoot, getDshHome: () => dshHome, verifiedAllowlist: {}, progress: (value) => marketplaceWindow?.webContents.send('marketplace:progress', value) });
     registerWorkbenchIpc();
     registerMarketplaceIpc();
@@ -88,6 +105,7 @@ if (!gotLock) {
     try {
       await startBackend();
       createMainWindow();
+      setupTray();
       logger.info(`Harness ready at http://127.0.0.1:${backendPort}/`);
     } catch (error) {
       logger.error(`Harness failed to start: ${error.code || error.message}`);
@@ -106,18 +124,22 @@ if (!gotLock) {
     if (stopping) return;
     stopping = true;
     event.preventDefault();
+    if (tray) { tray.destroy(); tray = undefined; }
+    closeUsageWindow();
     closeSettingsWindow();
     Promise.allSettled([workbench?.close(), stopBackend()]).finally(() => { app.exit(0); });
   });
 
   ipcMain.handle('get-status', () => ({ backend: Boolean(backend && backend.exitCode === null), port: backendPort || null, settings: store.publicSettings(), vision: vision.status() }));
   ipcMain.handle('open-settings', () => { openSettingsWindow(); return true; });
-  ipcMain.handle('settings-load', () => store.publicSettings());
+  ipcMain.handle('settings-load', () => decorateSettings(store.publicSettings()));
   ipcMain.handle('settings-save', async (_event, input) => {
     const publicSettings = await store.save(sanitizeSettingsInput(input));
+    applyLoginItemSetting();
     await prepareWorkspace();
     await restartBackend();
-    return publicSettings;
+    if (store.getPreferences().general.closeToTray) setupTray();
+    return decorateSettings(publicSettings);
   });
   ipcMain.handle('clear-secrets', async () => {
     const publicSettings = await store.clearSecrets();
@@ -144,6 +166,58 @@ if (!gotLock) {
   ipcMain.handle('test-deepseek', async () => testDeepSeek());
   ipcMain.handle('test-vision', async () => vision.test(store.publicSettings().vision));
   ipcMain.handle('vision-analyze', async (_event, input) => vision.analyze(input));
+  ipcMain.handle('usage-snapshot', async () => ({ ...appData.summarize(), paths: appData.describePaths() }));
+  ipcMain.handle('usage-clear', async () => appData.clearUsage());
+  ipcMain.handle('usage-open-billing', async () => { await shell.openExternal('https://platform.deepseek.com/usage'); return { ok: true }; });
+  ipcMain.handle('usage-close', () => { closeUsageWindow(); return true; });
+  ipcMain.handle('agent-levels', () => listAgentLevels());
+  ipcMain.handle('settings-export-profile', async () => {
+    const selection = await dialog.showSaveDialog(settingsWindow || mainWindow, { title: '导出 Desktop Profile（不含密钥）', defaultPath: path.join(app.getPath('documents'), 'deepseek-harness-profile.json'), filters: [{ name: 'JSON', extensions: ['json'] }] });
+    if (selection.canceled || !selection.filePath) return { ok: false, canceled: true };
+    await fsp.writeFile(selection.filePath, `${JSON.stringify(store.exportProfile(), null, 2)}\n`, { encoding: 'utf8', mode: 0o600 });
+    return { ok: true, path: selection.filePath };
+  });
+  ipcMain.handle('settings-import-profile', async () => {
+    const selection = await dialog.showOpenDialog(settingsWindow || mainWindow, { title: '导入 Desktop Profile（不含密钥）', properties: ['openFile'], filters: [{ name: 'JSON', extensions: ['json'] }] });
+    if (selection.canceled || !selection.filePaths[0]) return { ok: false, canceled: true };
+    const profile = JSON.parse(await fsp.readFile(selection.filePaths[0], 'utf8'));
+    const value = await store.importProfile(profile);
+    await prepareWorkspace();
+    await restartBackend();
+    applyLoginItemSetting();
+    if (store.getPreferences().general.closeToTray) setupTray();
+    return { ok: true, settings: decorateSettings(value) };
+  });
+  ipcMain.handle('settings-export-data', async () => {
+    const selection = await dialog.showSaveDialog(settingsWindow || mainWindow, { title: '导出我的 Desktop 数据（不含密钥和 Workspace 源码）', defaultPath: path.join(app.getPath('documents'), 'deepseek-harness-data.json'), filters: [{ name: 'JSON', extensions: ['json'] }] });
+    if (selection.canceled || !selection.filePath) return { ok: false, canceled: true };
+    const data = { schemaVersion: 1, exportedAt: new Date().toISOString(), preferences: store.exportProfile().preferences, appData: appData.exportData() };
+    await fsp.writeFile(selection.filePath, `${JSON.stringify(data, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 });
+    return { ok: true, path: selection.filePath };
+  });
+  ipcMain.handle('settings-open-data', async () => { const error = await shell.openPath(app.getPath('userData')); return { ok: !error, error: error || undefined }; });
+  ipcMain.handle('settings-clear-usage', async () => appData.clearUsage());
+  ipcMain.handle('settings-clear-logs', async () => { await fsp.writeFile(logger.file, '', 'utf8'); return { ok: true }; });
+  ipcMain.handle('settings-clear-sessions', async () => {
+    if (!dshHome) return { ok: false, error: 'Harness 数据目录尚未初始化' };
+    const sessions = path.join(dshHome, 'sessions');
+    await fsp.rm(sessions, { recursive: true, force: true });
+    await fsp.rm(path.join(dshHome, 'storages', 'session_projcache.json'), { force: true });
+    return { ok: true };
+  });
+  ipcMain.handle('settings-clear-handoff-history', async () => {
+    if (!workspaceRoot) return { ok: false, error: 'Workspace 尚未初始化' };
+    const history = path.join(workspaceRoot, '.agents', 'sessions');
+    await fsp.rm(history, { recursive: true, force: true });
+    return { ok: true };
+  });
+  ipcMain.handle('settings-clear-cache', async () => {
+    const cache = path.join(app.getPath('userData'), 'cache');
+    await fsp.rm(cache, { recursive: true, force: true });
+    vision?.memory?.clear?.();
+    return { ok: true };
+  });
+  ipcMain.handle('open-usage-window', () => { openUsageWindow(); return { ok: true }; });
 
   function registerWorkbenchIpc() {
     const handle = (name, fn) => ipcMain.handle(`workbench:${name}`, async (_event, input) => {
@@ -188,6 +262,7 @@ if (!gotLock) {
     });
     handle('openMarketplace', () => { openMarketplaceWindow(); return { ok: true }; });
     handle('openSettings', () => { openSettingsWindow(); return { ok: true }; });
+    handle('openUsage', () => { openUsageWindow(); return { ok: true }; });
     handle('openPath', async (input) => {
       const target = input?.kind === 'logs' ? path.dirname(logger.file) : workspaceRoot;
       const error = await shell.openPath(target);
@@ -262,8 +337,15 @@ if (!gotLock) {
     const currentProvider = settings['llm-deepseek'] && typeof settings['llm-deepseek'] === 'object' ? settings['llm-deepseek'] : {};
     const currentDefault = settings['agent-default-model'] && typeof settings['agent-default-model'] === 'object' ? settings['agent-default-model'] : {};
     const currentPresets = settings['agent-presets'] && typeof settings['agent-presets'] === 'object' ? settings['agent-presets'] : {};
+    const currentLoop = settings['agent-loop'] && typeof settings['agent-loop'] === 'object' ? settings['agent-loop'] : {};
+    const level = getAgentLevel(prefs.agent?.level);
     settings['llm-deepseek'] = { ...currentProvider, baseURL: d.baseURL, models: Array.isArray(currentProvider.models) && currentProvider.models.length ? currentProvider.models : models };
-    settings['agent-default-model'] = { ...currentDefault, provider: 'deepseek-official', model: d.model };
+    settings['agent-default-model'] = { ...currentDefault, provider: 'deepseek-official', model: d.model, reasoningEffort: level.reasoningEffort };
+    // `maxParallelToolCalls` is an official agent-loop setting. The remaining
+    // fields are Desktop policy metadata consumed by the budget guard and
+    // personalized preset instructions; none pretend to be provider APIs.
+    settings['agent-loop'] = { ...currentLoop, maxParallelToolCalls: level.maxParallelToolCalls };
+    settings['desktop-agent'] = { schemaVersion: 1, level: level.id, maxSteps: level.maxSteps, verify: level.verify, repair: level.repair, budgetOverride: Number(prefs.agent?.budgetOverride) || 0 };
     settings['agent-presets'] = { ...currentPresets, default: 'deepseek-desktop' };
     const temp = `${settingsPath}.${process.pid}.tmp`;
     await fsp.writeFile(temp, YAML.stringify(settings), 'utf8');
@@ -285,10 +367,10 @@ if (!gotLock) {
     const patchTemp = `${patchPath}.${process.pid}.tmp`;
     await fsp.writeFile(patchTemp, '# Desktop extension seam; no API keys are stored here.\n' + YAML.stringify(patches), 'utf8');
     await fsp.rename(patchTemp, patchPath);
-    await ensureDesktopPreset();
+    await ensureDesktopPreset(prefs, level);
   }
 
-  async function ensureDesktopPreset() {
+  async function ensureDesktopPreset(prefs = store.getPreferences(), level = getAgentLevel(prefs.agent?.level)) {
     const shipped = path.join(runtimeNodeModules(), '@deepseek-ai', 'dsh', 'config', 'agent-presets', 'standard');
     const destination = path.join(dshHome, '.agent-presets', 'deepseek-desktop');
     await fsp.mkdir(path.dirname(destination), { recursive: true });
@@ -300,8 +382,21 @@ if (!gotLock) {
     let text = await fsp.readFile(targetAgent, 'utf8');
     if (!text.includes("@deepseek-harness/vision-plugin")) {
       text += "\n# Desktop extension: independent Vision bridge (GLM only).\n- id: vision-analyze\n  name: '@deepseek-harness/vision-plugin'\n";
-      await fsp.writeFile(targetAgent, text, 'utf8');
     }
+    if (!text.includes("@deepseek-harness/browser-plugin")) {
+      text += "\n# Desktop extension: optional isolated Browser automation (permission-gated).\n- id: browser-agent\n  name: '@deepseek-harness/browser-plugin'\n";
+    }
+    const marker = '# Desktop personalization: generated by DeepSeek Harness Desktop';
+    const clean = text.replace(new RegExp(`\\n${marker}[\\s\\S]*?(?=\\n- id:|$)`), '');
+    const p = prefs.personalization || {};
+    const instructions = [p.globalInstructions, p.workspaceInstructions].filter(Boolean).join('\n').trim().slice(0, 24000);
+    const lines = [marker, `# Agent level: ${level.id}; provider effort: ${level.reasoningEffort}; max steps: ${level.maxSteps}.`, `# Desktop policy: verify=${level.verify}; repair=${level.repair}.`];
+    if (instructions) {
+      lines.push('# User instructions below are subordinate to project AGENTS.md rules.');
+      for (const line of instructions.split(/\r?\n/)) lines.push(`# ${line.replace(/[\r\n]/g, ' ').slice(0, 500)}`);
+    }
+    text = `${clean.trimEnd()}\n${lines.join('\n')}\n`;
+    await fsp.writeFile(targetAgent, text, 'utf8');
   }
 
   function ensureModuleJunction() {
@@ -338,22 +433,41 @@ if (!gotLock) {
 
   async function startBackend() {
     if (backend) await stopBackend();
-    backendPort = await freePort();
+    const prefs = store.getPreferences();
+    const configuredPort = Number(prefs.advanced?.harnessPort) || 0;
+    backendPort = prefs.advanced?.dynamicPort === false && configuredPort > 0 ? configuredPort : await freePort();
     const dshBin = path.join(runtimeNodeModules(), '@deepseek-ai', 'dsh', 'lib', 'bin.js');
     if (!fs.existsSync(dshBin)) throw new Error(`official dsh binary not found: ${dshBin}`);
-    const prefs = store.getPreferences();
     const apiKey = store.getSecret('deepseekApiKey');
+    const permissions = prefs.permissions || {};
+    const browserEnabled = Boolean(prefs.browser?.enabled && permissions.browser);
+    const browserDataDir = path.join(app.getPath('userData'), 'browser', 'profile');
+    await fsp.mkdir(browserDataDir, { recursive: true });
     const env = {
       ...process.env,
       DSH_HOME: dshHome,
       DSH_TELEMETRY_DISABLED: '1',
       DSH_DESKTOP: '1',
-      DSH_PERMISSION_MODE: prefs.workspace.allowShell ? 'workspace-write' : 'read-only',
+      DSH_PERMISSION_MODE: permissions.workspaceWrite === false ? 'read-only' : 'workspace-write',
+      DSH_DESKTOP_AGENT_LEVEL: getAgentLevel(prefs.agent?.level).id,
+      DSH_DESKTOP_AGENT_MAX_STEPS: String(getAgentLevel(prefs.agent?.level).maxSteps + (Number(prefs.agent?.budgetOverride) || 0)),
+      DSH_DESKTOP_VERIFY: getAgentLevel(prefs.agent?.level).verify ? '1' : '0',
+      DSH_DESKTOP_REPAIR: getAgentLevel(prefs.agent?.level).repair ? '1' : '0',
       DEEPSEEK_BASE_URL: prefs.deepseek.baseURL,
       ...(prefs.vision.enabled && store.getSecret('visionApiKey') ? { VISION_API_KEY: store.getSecret('visionApiKey') } : {}),
       ...(prefs.vision.baseURL ? { VISION_BASE_URL: prefs.vision.baseURL } : {}),
       ...(prefs.vision.model ? { VISION_MODEL: prefs.vision.model } : {}),
       ...(prefs.vision.provider ? { VISION_PROVIDER: prefs.vision.provider } : {}),
+      BROWSER_ENABLED: browserEnabled ? '1' : '0',
+      BROWSER_PERMISSION: browserEnabled ? '1' : '0',
+      BROWSER_HEADLESS: prefs.browser?.headless ? '1' : '0',
+      BROWSER_DATA_DIR: browserDataDir,
+      BROWSER_EXECUTABLE: prefs.browser?.executable || '',
+      BROWSER_DOWNLOAD_DIR: prefs.browser?.downloadDir || prefs.general?.downloadDir || path.join(workspaceRoot, '.harness-desktop', 'browser', 'downloads'),
+      BROWSER_ALLOWED_DOMAINS: (prefs.browser?.allowedDomains || []).join(','),
+      BROWSER_BLOCKED_DOMAINS: (prefs.browser?.blockedDomains || []).join(','),
+      BROWSER_CONFIRM_DOWNLOAD: prefs.browser?.confirmDownloads === false ? '0' : '1',
+      BROWSER_CONFIRM_UPLOAD: prefs.browser?.confirmUploads === false ? '0' : '1',
       ...(apiKey ? { DEEPSEEK_API_KEY: apiKey } : {}),
     };
     const args = [dshBin, 'web', '--host', '127.0.0.1', '--port', String(backendPort)];
@@ -366,7 +480,7 @@ if (!gotLock) {
     }
     attachBackendLogging(child);
     backend = child;
-    const ready = await waitForReady(child, backendPort);
+    const ready = await waitForReady(child, backendPort, prefs.advanced?.startupTimeoutMs);
     if (!ready) {
       await stopBackend();
       if (!systemNode) throw new Error('Electron Node runner failed and no system Node.js executable was found');
@@ -374,7 +488,7 @@ if (!gotLock) {
       child = spawn(systemNode, args, { cwd: workspaceRoot, env, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
       attachBackendLogging(child);
       backend = child;
-      if (!await waitForReady(child, backendPort)) { await stopBackend(); throw new Error('dsh Web did not become ready on the selected loopback port'); }
+      if (!await waitForReady(child, backendPort, prefs.advanced?.startupTimeoutMs)) { await stopBackend(); throw new Error('dsh Web did not become ready on the selected loopback port'); }
     }
   }
 
@@ -385,9 +499,9 @@ if (!gotLock) {
     child.on('exit', (code, signal) => { logger.info(`dsh process exited (${code ?? 'null'}/${signal ?? 'none'})`); if (backend === child && !stopping) backendPort = undefined; });
   }
 
-  async function waitForReady(child, port) {
+  async function waitForReady(child, port, timeoutMs = 60000) {
     const started = Date.now();
-    while (Date.now() - started < 60000) {
+    while (Date.now() - started < (Number(timeoutMs) || 60000)) {
       if (child.exitCode !== null) return false;
       try {
         const response = await fetch(`http://127.0.0.1:${port}/`, { signal: AbortSignal.timeout(1500) });
@@ -494,6 +608,36 @@ if (!gotLock) {
 
   function closeSettingsWindow() { if (settingsWindow && !settingsWindow.isDestroyed()) settingsWindow.close(); settingsWindow = undefined; }
 
+  function openUsageWindow() {
+    if (usageWindow && !usageWindow.isDestroyed()) { usageWindow.show(); usageWindow.focus(); return; }
+    usageWindow = new BrowserWindow({ width: 980, height: 720, minWidth: 720, minHeight: 560, title: 'Usage & Billing', parent: mainWindow, modal: false, backgroundColor: '#0a0e15', webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, preload: path.join(__dirname, 'usage-preload.cjs') } });
+    usageWindow.setMenuBarVisibility(false);
+    usageWindow.on('closed', () => { usageWindow = undefined; });
+    usageWindow.loadFile(path.join(__dirname, 'usage.html'));
+  }
+
+  function closeUsageWindow() { if (usageWindow && !usageWindow.isDestroyed()) usageWindow.close(); usageWindow = undefined; }
+
+  function decorateSettings(publicSettings) {
+    const value = publicSettings || store.publicSettings();
+    return { ...value, dataPaths: { userData: app.getPath('userData'), logs: logger?.file || '', usage: appData?.file || '', workspace: workspaceRoot || '', cache: path.join(app.getPath('userData'), 'cache') }, app: { desktopVersion: app.getVersion(), electron: process.versions.electron, node: process.versions.node, harness: '0.1.0-rc.6', license: 'MIT (Desktop) + upstream notices' } };
+  }
+
+  function applyLoginItemSetting() {
+    try { app.setLoginItemSettings({ openAtLogin: Boolean(store.getPreferences().general?.startOnBoot), args: ['--launched-at-login'] }); } catch (error) { logger?.warn(`login item setting unavailable: ${error.code || error.message}`); }
+  }
+
+  function setupTray() {
+    const prefs = store.getPreferences();
+    if (!prefs.general?.closeToTray || tray) return;
+    const icon = fs.existsSync(path.join(__dirname, '..', 'build', 'icon.png')) ? nativeImage.createFromPath(path.join(__dirname, '..', 'build', 'icon.png')) : nativeImage.createEmpty();
+    tray = new Tray(icon);
+    tray.setToolTip('DeepSeek Harness Desktop');
+    tray.setContextMenu(Menu.buildFromTemplate([{ label: '显示工作台', click: () => { mainWindow?.show(); mainWindow?.focus(); } }, { label: '设置', click: () => openSettingsWindow() }, { type: 'separator' }, { label: '退出', click: () => { stopping = false; app.quit(); } }]));
+    tray.on('double-click', () => { mainWindow?.show(); mainWindow?.focus(); });
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.on('close', (event) => { if (!stopping && store.getPreferences().general?.closeToTray) { event.preventDefault(); mainWindow.hide(); } });
+  }
+
   function openMarketplaceWindow() {
     if (marketplaceWindow && !marketplaceWindow.isDestroyed()) { marketplaceWindow.show(); marketplaceWindow.focus(); return; }
     marketplaceWindow = new BrowserWindow({ width: 940, height: 760, minWidth: 700, minHeight: 560, title: 'Harness 插件', parent: mainWindow, modal: false, backgroundColor: '#090d16', webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, preload: path.join(__dirname, 'marketplace-preload.cjs') } });
@@ -518,6 +662,7 @@ if (!gotLock) {
       const chatBody = await chatResponse.json().catch(() => ({}));
       if (!chatResponse.ok) throw Object.assign(new Error(`DeepSeek chat HTTP ${chatResponse.status}`), { code: `HTTP_${chatResponse.status}` });
       const text = chatBody?.choices?.[0]?.message?.content;
+      if (chatBody?.usage) await appData.recordUsage({ ...chatBody.usage, provider: 'deepseek-official', model, workspace: workspaceRoot, source: 'connection-test', requestAt: new Date().toISOString() });
       return { ok: true, status: 'DeepSeek Ready', model, preview: typeof text === 'string' ? text.slice(0, 80) : 'response received', advertisedModels: ids.length };
     } catch (error) { logger.warn(`DeepSeek connection test failed: ${error.code || error.message}`); return { ok: false, status: 'DeepSeek Error', code: error.code || 'REQUEST_FAILED', error: safeError(error) }; }
   }
@@ -547,7 +692,10 @@ if (!gotLock) {
   function safeError(error) { return `${error?.code || 'REQUEST_FAILED'}: ${String(error?.message || 'request failed').replace(/sk-[A-Za-z0-9._-]+/g, 'sk-[REDACTED]')}`; }
   function sanitizeSettingsInput(input) {
     const value = input && typeof input === 'object' ? input : {};
-    const output = { deepseek: value.deepseek, vision: value.vision, workspace: value.workspace, debug: value.debug };
+    const output = {};
+    for (const section of ['deepseek', 'vision', 'workspace', 'debug', 'general', 'appearance', 'personalization', 'agent', 'permissions', 'browser', 'advanced']) {
+      if (value[section] && typeof value[section] === 'object') output[section] = value[section];
+    }
     if (typeof value.deepseekApiKey === 'string') output.deepseekApiKey = value.deepseekApiKey;
     if (typeof value.visionApiKey === 'string') output.visionApiKey = value.visionApiKey;
     return output;

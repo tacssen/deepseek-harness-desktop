@@ -6,6 +6,8 @@ const { execFile } = require('node:child_process');
 const { promisify } = require('node:util');
 const { redact } = require('./logger.cjs');
 const { SharedContextService } = require('./shared-context-service.cjs');
+const { getAgentLevel, listAgentLevels } = require('./agent-levels.cjs');
+const os = require('node:os');
 const chokidar = require('chokidar');
 
 const execFileAsync = promisify(execFile);
@@ -86,7 +88,7 @@ function safePreview(value, max = 300) {
 }
 
 class WorkbenchService {
-  constructor({ app, logger, getPort, getWorkspace, sharedContext }) {
+  constructor({ app, logger, getPort, getWorkspace, sharedContext, usage, getPreferences }) {
     this.app = app;
     this.logger = logger;
     this.getPort = getPort;
@@ -96,6 +98,8 @@ class WorkbenchService {
     this.accepted = new Set();
     this.checkpointFile = path.join(app.getPath('userData'), 'workbench', 'checkpoints.json');
     this.sharedContext = sharedContext || new SharedContextService({ logger });
+    this.usage = usage;
+    this.getPreferences = getPreferences || (() => ({}));
     this.sharedCache = null;
     this.sharedCacheAt = 0;
     this.watcher = null;
@@ -107,9 +111,10 @@ class WorkbenchService {
   async rpc(method, payload = {}) {
     const port = this.getPort();
     if (!port) throw new Error('Harness 后端尚未 Ready');
+    const timeoutMs = Number(this.getPreferences()?.advanced?.requestTimeoutMs) || 20000;
     const response = await fetch(`http://127.0.0.1:${port}/api/${method}`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(rpcEnvelope(method, payload)), signal: AbortSignal.timeout(20000),
+      body: JSON.stringify(rpcEnvelope(method, payload)), signal: AbortSignal.timeout(timeoutMs),
     });
     if (!response.ok) throw new Error(`Harness RPC ${method} HTTP ${response.status}`);
     const body = await response.json();
@@ -140,12 +145,17 @@ class WorkbenchService {
       await this.sharedContext.heartbeat(workspace).then(() => { this.lastHeartbeat = Date.now(); }).catch((error) => { this.lockOwned = false; this.logger.warn(`shared project heartbeat lost: ${error.code || error.message}`); });
     }
     const shared = await this.getSharedSnapshot().catch((error) => ({ available: false, error: safePreview(error.message) }));
-    const base = { backend: { ready: Boolean(this.getPort()), port: this.getPort() || null }, workspace: { path: workspace, name: path.basename(workspace) }, session: { id: '', title: '', running: false, mode: 'chat' }, goal: null, todos: [], timeline: [], diffs: [], stats: {}, skills: [], mcpConnections: [], checkpoints: [], problems: [], logs: [], gitDiff: '', terminalHistory: [], workspaceChanges: [...this.workspaceChanges].reverse(), shared };
+    const prefs = this.getPreferences() || {};
+    const level = getAgentLevel(prefs.agent?.level);
+    const effectiveLevel = { ...level, maxSteps: level.maxSteps + (Number(prefs.agent?.budgetOverride) || 0), configuredMaxSteps: level.maxSteps, budgetOverride: Number(prefs.agent?.budgetOverride) || 0 };
+    const permissions = { ...(prefs.permissions || {}), workspaceWrite: prefs.permissions?.workspaceWrite !== false, terminal: prefs.permissions?.terminal !== false, browser: Boolean(prefs.permissions?.browser), computer: false };
+    const base = { backend: { ready: Boolean(this.getPort()), port: this.getPort() || null }, workspace: { path: workspace, name: path.basename(workspace) }, session: { id: '', title: '', running: false, mode: 'chat' }, goal: null, todos: [], timeline: [], diffs: [], stats: {}, usage: this.usage?.summarize?.() || null, agentLevel: { ...effectiveLevel, levels: listAgentLevels(), providerNote: 'DeepSeek 官方原生 effort 当前为 high/max；低/中由 Desktop 执行预算区分。' }, permissions, browser: { enabled: Boolean(prefs.browser?.enabled && permissions.browser), headless: Boolean(prefs.browser?.headless) }, skillCatalog: [], mcpConnections: [], checkpoints: [], problems: [], logs: [], gitDiff: '', terminalHistory: [], workspaceChanges: [...this.workspaceChanges].reverse(), shared };
     if (!this.getPort()) return base;
     try {
       const session = await this.getSession();
       const history = await this.rpc('session.history', { sessionId: session.sessionId, maxMessages: 80 });
       const events = history?.events || [];
+      await this.usage?.recordSessionEvents?.(events, { sessionId: session.sessionId, workspace });
       const projections = history?.projections?.values || session?.projections?.values || {};
       const goalProjection = projections.goal;
       const goal = goalProjection?.goal || null;
@@ -154,8 +164,10 @@ class WorkbenchService {
       const diffs = collectDiffs(events).map((diff) => ({ ...diff, status: this.accepted.has(diff.id) ? 'accepted' : 'pending' }));
       this.lastDiffs = new Map(diffs.map((diff) => [diff.id, diff]));
       const skillsValue = await this.rpc('skill.list', { sessionId: session.sessionId }).catch(() => ({ skills: [] }));
+      const skillCatalog = await this.listSkillCatalog().catch(() => []);
       const checkpoints = await this.readCheckpoints();
       const timeline = summarizeTimeline(events);
+      await this.enforceAgentBudget(session, events, effectiveLevel).catch((error) => this.logger.warn(`agent budget enforcement failed: ${error.code || error.message}`));
       return {
         ...base,
         session: { id: session.sessionId, title: projections.title || session.title || '当前会话', running: Boolean(session.running), mode },
@@ -164,7 +176,12 @@ class WorkbenchService {
         timeline,
         diffs,
         stats: { tokenUsage: projections.tokenUsage || {}, contextPressure: projections.contextPressure || {}, contextBreakdown: projections.contextBreakdown || {}, sessionStats: projections.sessionStats || {} },
+        usage: this.usage?.summarize?.({ sessionId: session.sessionId }) || null,
+        agentLevel: { ...effectiveLevel, levels: listAgentLevels(), providerNote: 'DeepSeek 官方原生 effort 当前为 high/max；低/中由 Desktop 执行预算区分。' },
+        permissions,
+        browser: { enabled: Boolean(prefs.browser?.enabled && permissions.browser), headless: Boolean(prefs.browser?.headless) },
         skills: Array.isArray(skillsValue) ? skillsValue : skillsValue?.skills || [],
+        skillCatalog,
         mcpConnections: detectMcp(events),
         checkpoints,
         problems: [
@@ -207,10 +224,16 @@ class WorkbenchService {
 
   async prompt(text) {
     const session = await this.getSession();
-    return this.rpc('session.prompt', { sessionId: session.sessionId, mode: 'queue', content: [{ type: 'text', text }], clientTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone });
+    const prefs = this.getPreferences() || {};
+    const p = prefs.personalization || {};
+    const instructions = [p.globalInstructions, p.workspaceInstructions].filter(Boolean).join('\n').trim().slice(0, 12000);
+    const enriched = instructions ? `${text}\n\n[Desktop personal instructions; follow project AGENTS.md and security policy first]\n${instructions}` : text;
+    return this.rpc('session.prompt', { sessionId: session.sessionId, mode: 'queue', content: [{ type: 'text', text: enriched }], clientTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone });
   }
 
   async runTerminal({ command }) {
+    const prefs = this.getPreferences() || {};
+    if (prefs.permissions && prefs.permissions.terminal === false) return { ok: false, error: '当前权限 Preset 禁止 Terminal；请在设置中显式开启。' };
     const value = String(command || '').trim();
     if (!value || value.length > 4000) return { ok: false, error: '命令不能为空且不能超过 4000 个字符' };
     await this.prompt(`Use the pwsh tool in the current workspace to run exactly this user-entered PowerShell command. Do not reinterpret or expand its scope. Report stdout, stderr and exit status briefly. Command:\n${value}`);
@@ -373,6 +396,54 @@ class WorkbenchService {
     if (!/^[A-Za-z0-9_-]{1,80}$/.test(value)) return { ok: false, error: 'Skill 名称无效' };
     await this.prompt(`/${value}`);
     return { ok: true, status: `已请求调用 ${value}` };
+  }
+
+  async enforceAgentBudget(session, events, level) {
+    if (!session?.running || !level?.maxSteps) return;
+    const turnStarts = (events || []).filter((entry) => (entry?.event || entry)?.type === 'turn/start');
+    const currentTurn = turnStarts.at(-1)?.event?.data?.turn || turnStarts.at(-1)?.data?.turn;
+    if (currentTurn == null) return;
+    const steps = (events || []).filter((entry) => { const event = entry?.event || entry; return event.type === 'step/start' && (event.data?.turn === currentTurn || entry?.data?.turn === currentTurn); }).length;
+    if (steps <= level.maxSteps) return;
+    const key = `${session.sessionId}:${currentTurn}`;
+    if (!this.budgetStops) this.budgetStops = new Set();
+    if (this.budgetStops.has(key)) return;
+    this.budgetStops.add(key);
+    await this.rpc('session.cancel', { sessionId: session.sessionId }).catch(() => {});
+    this.logger.warn(`agent level ${level.id} canceled session ${session.sessionId} after ${steps} steps`);
+  }
+
+  async listSkillCatalog() {
+    const roots = [
+      { root: path.join(this.getWorkspace(), '.agents', 'skills'), scope: 'project' },
+      { root: path.join(os.homedir(), '.agents', 'skills'), scope: 'global' },
+    ];
+    const result = [];
+    const visit = async (root, scope, depth = 0) => {
+      if (depth > 2 || result.length >= 200) return;
+      let entries; try { entries = await fsp.readdir(root, { withFileTypes: true }); } catch { return; }
+      for (const entry of entries) {
+        if (entry.name.startsWith('.') && entry.name !== '.system') continue;
+        const candidate = path.join(root, entry.name);
+        if (entry.isDirectory()) { await visit(candidate, scope, depth + 1); continue; }
+        if (entry.name.toLowerCase() !== 'skill.md') continue;
+        const raw = await fsp.readFile(candidate, 'utf8').catch(() => '');
+        const first = raw.split(/\r?\n/).slice(0, 30);
+        const name = first.find((line) => /^name\s*:/i.test(line))?.replace(/^name\s*:\s*/i, '').trim() || path.basename(path.dirname(candidate));
+        const description = first.find((line) => /^description\s*:/i.test(line))?.replace(/^description\s*:\s*/i, '').trim() || first.find((line) => line.trim() && !line.startsWith('#'))?.trim() || '';
+        result.push({ name: name.slice(0, 120), description: description.slice(0, 300), scope, path: scope === 'project' ? path.relative(this.getWorkspace(), candidate) : null, folder: scope === 'project' ? path.relative(this.getWorkspace(), path.dirname(candidate)) : null });
+      }
+    };
+    for (const item of roots) await visit(item.root, item.scope);
+    return result.sort((a, b) => `${a.scope}:${a.name}`.localeCompare(`${b.scope}:${b.name}`));
+  }
+
+  async openSkill({ name, scope = 'project' } = {}) {
+    const skills = await this.listSkillCatalog();
+    const item = skills.find((entry) => entry.name === String(name) && entry.scope === scope);
+    if (!item) return { ok: false, error: 'Skill 不存在或不可访问' };
+    const target = scope === 'project' ? path.join(this.getWorkspace(), item.folder || '.agents/skills') : path.join(os.homedir(), '.agents', 'skills');
+    return { ok: true, path: target };
   }
 
   async acceptDiff({ id }) {

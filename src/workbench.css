@@ -73,6 +73,9 @@ svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width:
 .workspace-chip { display: inline-flex; align-items: center; gap: 7px; max-width: 270px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; color: var(--muted); background: rgba(255,255,255,.025); white-space: nowrap; overflow: hidden; }
 .workspace-label { max-width: 150px; color: #ccd6e2; overflow: hidden; text-overflow: ellipsis; }
 .workspace-status { color: var(--faint); font-size: 11px; }
+.level-chip, .usage-chip { flex: 0 0 auto; min-height: 30px; padding: 0 9px; border: 1px solid var(--line); border-radius: 8px; color: var(--muted); background: rgba(255,255,255,.025); cursor: pointer; font-size: 11px; -webkit-app-region: no-drag; }
+.level-chip:hover, .usage-chip:hover { color: var(--text); border-color: var(--line-strong); background: var(--surface-hover); }
+.level-chip.is-warn { color: var(--warn); border-color: rgba(243,197,119,.3); }
 .status-dot { display: inline-block; flex: 0 0 auto; width: 7px; height: 7px; border-radius: 50%; background: var(--good); box-shadow: 0 0 0 3px rgba(114, 216, 160, .1); }
 .status-dot.is-muted { background: var(--faint); box-shadow: none; }
 .status-dot.is-warn { background: var(--warn); box-shadow: 0 0 0 3px rgba(243, 197, 119, .1); }
