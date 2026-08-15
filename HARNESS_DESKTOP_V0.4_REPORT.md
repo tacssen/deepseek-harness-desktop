@@ -207,8 +207,8 @@ npm run dist
 
 | 产物 | SHA-256 | 说明 |
 | --- | --- | --- |
-| `dist/DeepSeek-Harness-Desktop-0.4.0-x64.exe` | `29D0149A4909A4201562A5FCF88F7FF99236631F5D0A6F3009B4A7244C677C0E` | NSIS x64 |
-| `dist/DeepSeek-Harness-Desktop-0.4.0-portable.exe` | `8F42ADC49A1FBCEF3FDD500632F99D2922BCFABFD277E12E5D5CC6955BDE8934` | Portable x64 |
+| `dist/DeepSeek-Harness-Desktop-0.4.0-x64.exe` | `703DF37B5A62B3495CDDCCD30F02070EFA0D10FE1F199DBF036B8E9272D2B93B` | NSIS x64 |
+| `dist/DeepSeek-Harness-Desktop-0.4.0-portable.exe` | `B06FBA2072F468EE1B51F4B3546B7E3937AB35DF936D155926197991F448F377` | Portable x64 |
 
 NSIS 和 Portable 均成功生成，runtime-stage 包含官方 dsh rc.6、Vision/Browser plugin。
 本机实际运行目标使用 `%LOCALAPPDATA%\Programs\DeepSeek Harness Desktop`，由最新

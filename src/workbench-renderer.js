@@ -33,6 +33,7 @@
     agentLevel: { id: 'medium', label: '中', levels: [] },
     permissions: {},
     browser: {},
+    appearance: {},
     usage: null,
   };
   let state = structuredCloneSafe(defaultState);
@@ -63,6 +64,7 @@
     result.agentLevel = { ...result.agentLevel, ...asObject(next.agentLevel) };
     result.permissions = { ...result.permissions, ...asObject(next.permissions) };
     result.browser = { ...result.browser, ...asObject(next.browser) };
+    result.appearance = { ...result.appearance, ...asObject(next.appearance) };
     result.usage = next.usage && typeof next.usage === 'object' ? next.usage : null;
     return result;
   }
@@ -113,6 +115,7 @@
     if (layout.dockHeight) shell.style.setProperty('--dock-height', `${Math.max(180, Math.min(420, number(layout.dockHeight, 250)))}px`);
 
     const ready = bool(state.backend.ready);
+    applyAppearance(state.appearance);
     const dot = $('backendDot');
     dot.className = `status-dot ${ready ? '' : 'is-muted'}`;
     setText('backendStatus', ready ? (state.session.running ? '运行中' : '已连接') : '连接中');
@@ -147,6 +150,22 @@
     renderTerminalHistory();
     if (activeRailTab) selectRailTab(activeRailTab, false);
     if (activeDockTab) selectDockTab(activeDockTab, false);
+  }
+
+  function applyAppearance(value) {
+    const appearance = asObject(value);
+    const theme = ['dark', 'light', 'system'].includes(appearance.theme) ? appearance.theme : 'dark';
+    const root = document.documentElement;
+    root.dataset.theme = theme;
+    root.dataset.compact = String(Boolean(appearance.compact));
+    root.dataset.animations = String(appearance.animations !== false);
+    const scale = Math.max(75, Math.min(150, number(appearance.scale, 100)));
+    const fontSize = Math.max(11, Math.min(22, number(appearance.fontSize, 14)));
+    root.style.setProperty('--ui-scale', String(scale / 100));
+    root.style.setProperty('--ui-font-size', `${fontSize}px`);
+    if (typeof appearance.codeFont === 'string' && appearance.codeFont.trim()) root.style.setProperty('--code-font', appearance.codeFont);
+    if (typeof appearance.editorFont === 'string' && appearance.editorFont.trim()) root.style.setProperty('--editor-font', appearance.editorFont);
+    root.style.fontSize = `${fontSize}px`;
   }
 
   function renderGoal() {
