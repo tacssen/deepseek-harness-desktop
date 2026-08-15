@@ -33,9 +33,9 @@ test('lock excludes another live agent and releases only for its owner', async (
 
 test('writes a redacted structured handoff and machine-readable state', async (t) => {
   const x = await fixture(); t.after(() => fs.rm(x.base, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })); await x.service.initialize(x.project);
-  const result = await x.service.prepareHandoff(x.project, { fromAgent: 'deepseek', goal: 'ship', completed: ['phase B'], pending: ['phase C'], summary: 'Authorization: Header fixture-secret', nextAction: 'continue' });
+  const result = await x.service.prepareHandoff(x.project, { fromAgent: 'deepseek', goal: 'ship', completed: ['phase B'], pending: ['phase C'], summary: 'Authorization: Bearer short-test', nextAction: 'continue' });
   const markdown = await fs.readFile(path.join(x.project, '.agents', 'HANDOFF.md'), 'utf8');
-  assert.match(markdown, /phase B/); assert.doesNotMatch(markdown, /fixture-secret/); assert.match(markdown, /\[REDACTED\]/);
+  assert.match(markdown, /phase B/); assert.doesNotMatch(markdown, /short-test/); assert.match(markdown, /\[REDACTED\]/);
   assert.equal(result.state.lastHandoff.toAgent, 'codex');
 });
 
