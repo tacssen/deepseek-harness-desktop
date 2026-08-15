@@ -1,5 +1,6 @@
 ﻿node_modules/
 runtime-stage/
+.dsh/
 dist/
 .proof-home/
 manual-*-home/
@@ -9,3 +10,14 @@ manual-test-home/
 manual-plugin-home*/
 *.log
 *.tmp
+.reference/
+settings.secure.json
+*.secure.json
+*.dpapi
+*.har
+*.trace
+*-proof.png
+installer-page*.png
+desktop-*.png
+settings-*.png
+screenshots/private/

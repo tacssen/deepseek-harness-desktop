@@ -34,11 +34,12 @@
     <section class="card">
       <h2>Vision Bridge (independent)</h2>
       <label><input id="visionEnabled" type="checkbox" style="width:auto;margin-right:6px"> Enable Vision Bridge</label>
-      <label for="visionBaseURL">Vision Base URL</label><input id="visionBaseURL" autocomplete="off" value="https://open.bigmodel.cn/api/paas/v4/chat/completions">
-      <label for="visionModel">Vision model</label><input id="visionModel" value="glm-4.6v-flash" autocomplete="off">
+      <label for="visionProvider">Provider</label><select id="visionProvider"><option value="siliconflow">SiliconFlow</option><option value="bigmodel">BigModel / Zhipu</option></select>
+      <label for="visionBaseURL">Vision endpoint</label><input id="visionBaseURL" autocomplete="off" value="https://api.siliconflow.cn/v1/chat/completions">
+      <label for="visionModel">Vision model</label><input id="visionModel" value="zai-org/GLM-4.5V" autocomplete="off">
       <label for="visionApiKey">Vision API Key</label><input id="visionApiKey" type="password" autocomplete="new-password" placeholder="Not provided; leave blank"><div id="visionKeyState" class="hint">Awaiting API Key</div>
       <div class="row" style="margin-top:12px"><button id="testVision">Test Vision</button><div id="visionStatus" class="status">No key does not block DeepSeek</div></div>
-      <div class="hint">Images are validated as PNG/JPEG, <=5 MB, SHA-256 cached, and never sent to DeepSeek.</div>
+      <div class="hint">SiliconFlow uses its OpenAI-compatible /v1/chat/completions endpoint. Images are validated, SHA-256 cached, and never sent to DeepSeek.</div>
     </section>
     <section class="card wide">
       <h2>Workspace / permissions / logs</h2>

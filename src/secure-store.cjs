@@ -18,9 +18,9 @@ const DEFAULTS = Object.freeze({
   },
   vision: {
     enabled: false,
-    provider: 'glm',
-    baseURL: 'https://open.bigmodel.cn/api/paas/v4/chat/completions',
-    model: 'glm-4.6v-flash',
+    provider: 'siliconflow',
+    baseURL: 'https://api.siliconflow.cn/v1/chat/completions',
+    model: 'zai-org/GLM-4.5V',
   },
   workspace: {
     path: '',
@@ -46,9 +46,7 @@ function mergeDefaults(value) {
 }
 
 function maskSecret(value) {
-  if (!value) return '';
-  if (value.length <= 8) return '********';
-  return `${value.slice(0, 4)}…${value.slice(-4)}`;
+  return value ? '••••••••' : '';
 }
 
 class SecureStore {
@@ -136,6 +134,7 @@ class SecureStore {
     preferences.deepseek.model = normalizeModel(preferences.deepseek.model, 'deepseek model');
     preferences.vision.baseURL = normalizeURL(preferences.vision.baseURL, 'vision base URL');
     preferences.vision.model = normalizeModel(preferences.vision.model, 'vision model');
+    preferences.vision.provider = ['siliconflow', 'bigmodel'].includes(preferences.vision.provider) ? preferences.vision.provider : 'siliconflow';
     preferences.vision.enabled = Boolean(preferences.vision.enabled);
     preferences.workspace.allowShell = Boolean(preferences.workspace.allowShell);
     preferences.workspace.path = typeof preferences.workspace.path === 'string' ? preferences.workspace.path : '';
@@ -182,7 +181,7 @@ function normalizeURL(value, label) {
 }
 
 function normalizeModel(value, label) {
-  if (typeof value !== 'string' || !/^[A-Za-z0-9._:-]{1,160}$/.test(value)) throw new Error(`${label} is invalid`);
+  if (typeof value !== 'string' || !/^[A-Za-z0-9._:/-]{1,160}$/.test(value)) throw new Error(`${label} is invalid`);
   return value;
 }
 

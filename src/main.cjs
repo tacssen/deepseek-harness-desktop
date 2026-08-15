@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, ipcMain, safeStorage, dialog, shell } = require('electron');
+const { app, BrowserWindow, WebContentsView, Menu, ipcMain, safeStorage, dialog, shell } = require('electron');
 const path = require('node:path');
 const os = require('node:os');
 const fs = require('node:fs');
@@ -9,22 +9,33 @@ const YAML = require('yaml');
 const { SecureStore } = require('./secure-store.cjs');
 const { Logger, redact } = require('./logger.cjs');
 const { VisionBridge } = require('./vision-bridge.cjs');
+const { WorkbenchService } = require('./workbench-service.cjs');
+const { MarketplaceService } = require('./marketplace-service.cjs');
 
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
   app.quit();
 } else {
   let mainWindow;
+  let harnessView;
   let settingsWindow;
+  let marketplaceWindow;
   let backend;
   let backendPort;
   let stopping = false;
   let logger;
   let store;
   let vision;
+  let workbench;
+  let marketplace;
   let workspaceRoot;
   let dshHome;
+  let workbenchLayout = { railOpen: true, dockOpen: false, railWidth: 336, dockHeight: 250 };
   const importDeepSeekKey = process.argv.includes('--import-deepseek-key-stdin');
+  const importVisionKey = process.argv.includes('--import-vision-key-stdin');
+  const testVisionOnce = process.argv.includes('--test-vision-once');
+  const workspaceArgument = process.argv.find((value) => value.startsWith('--workspace='));
+  const workspaceOverride = workspaceArgument ? path.resolve(workspaceArgument.slice('--workspace='.length)) : null;
 
   app.setAppUserModelId('ai.deepseek.harness.desktop');
 
@@ -43,10 +54,21 @@ if (!gotLock) {
     store = new SecureStore(app, safeStorage, (message) => logger.warn(message));
     store.load();
     vision = new VisionBridge(app, store, logger);
-    if (importDeepSeekKey) {
+    if (testVisionOnce) {
+      const result = await vision.test(store.publicSettings().vision);
+      process.stdout.write(`${JSON.stringify({ ok: result.ok, status: result.status, model: result.model, code: result.code })}\n`);
+      await logger.queue;
+      app.exit(result.ok ? 0 : 1);
+      return;
+    }
+    if (importDeepSeekKey || importVisionKey) {
       try {
         const key = await readSecretStdin();
-        await store.save({ deepseekApiKey: key });
+        if (importVisionKey) {
+          await store.save({ visionApiKey: key, vision: { enabled: true, provider: 'siliconflow', baseURL: 'https://api.siliconflow.cn/v1/chat/completions', model: 'zai-org/GLM-4.5V' } });
+        } else {
+          await store.save({ deepseekApiKey: key });
+        }
         process.stdout.write('CREDENTIAL_SAVED\n');
         app.exit(0);
       } catch (error) {
@@ -58,6 +80,10 @@ if (!gotLock) {
       return;
     }
     await prepareWorkspace();
+    workbench = new WorkbenchService({ app, logger, getPort: () => backendPort, getWorkspace: () => workspaceRoot });
+    marketplace = new MarketplaceService({ app, logger, getWorkspace: () => workspaceRoot, getDshHome: () => dshHome, verifiedAllowlist: {}, progress: (value) => marketplaceWindow?.webContents.send('marketplace:progress', value) });
+    registerWorkbenchIpc();
+    registerMarketplaceIpc();
     createMenu();
     try {
       await startBackend();
@@ -81,7 +107,7 @@ if (!gotLock) {
     stopping = true;
     event.preventDefault();
     closeSettingsWindow();
-    stopBackend().finally(() => { app.exit(0); });
+    Promise.allSettled([workbench?.close(), stopBackend()]).finally(() => { app.exit(0); });
   });
 
   ipcMain.handle('get-status', () => ({ backend: Boolean(backend && backend.exitCode === null), port: backendPort || null, settings: store.publicSettings(), vision: vision.status() }));
@@ -119,17 +145,102 @@ if (!gotLock) {
   ipcMain.handle('test-vision', async () => vision.test(store.publicSettings().vision));
   ipcMain.handle('vision-analyze', async (_event, input) => vision.analyze(input));
 
+  function registerWorkbenchIpc() {
+    const handle = (name, fn) => ipcMain.handle(`workbench:${name}`, async (_event, input) => {
+      const result = await fn(input || {});
+      if (name !== 'getSnapshot' && mainWindow && !mainWindow.isDestroyed()) {
+        workbench.getSnapshot().then((next) => mainWindow?.webContents.send('workbench:state', next)).catch(() => {});
+      }
+      return result;
+    });
+    handle('getSnapshot', () => workbench.getSnapshot());
+    handle('setLayout', (input) => {
+      workbenchLayout = sanitizeWorkbenchLayout(input);
+      updateHarnessBounds();
+      return workbenchLayout;
+    });
+    handle('setMode', (input) => workbench.setMode(input));
+    handle('runTerminal', (input) => workbench.runTerminal(input));
+    handle('listFiles', (input) => workbench.listFiles(input));
+    handle('attachFiles', async () => {
+      const selection = await dialog.showOpenDialog(mainWindow, {
+        title: '添加工作区附件',
+        properties: ['openFile', 'multiSelections'],
+        filters: [
+          { name: '常用文件', extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'txt', 'md', 'json', 'yaml', 'yml', 'js', 'ts', 'py', 'ps1', 'pdf'] },
+          { name: '所有文件', extensions: ['*'] },
+        ],
+      });
+      if (selection.canceled) return { files: [] };
+      return workbench.attachFiles(selection.filePaths);
+    });
+    handle('insertReference', (input) => workbench.insertReference(input));
+    handle('createCheckpoint', () => workbench.createCheckpoint());
+    handle('restoreCheckpoint', (input) => workbench.restoreCheckpoint(input));
+    handle('invokeSkill', (input) => workbench.invokeSkill(input));
+    handle('revertDiff', (input) => workbench.revertDiff(input));
+    handle('acceptDiff', (input) => workbench.acceptDiff(input));
+    handle('initializeSharedProject', () => workbench.initializeSharedProject());
+    handle('continueFromCodex', (input) => workbench.continueFromCodex(input));
+    handle('prepareHandoffForCodex', (input) => workbench.prepareHandoffForCodex(input));
+    handle('openProject', async () => {
+      return chooseExistingProject();
+    });
+    handle('openMarketplace', () => { openMarketplaceWindow(); return { ok: true }; });
+    handle('openSettings', () => { openSettingsWindow(); return { ok: true }; });
+    handle('openPath', async (input) => {
+      const target = input?.kind === 'logs' ? path.dirname(logger.file) : workspaceRoot;
+      const error = await shell.openPath(target);
+      return { ok: !error, error: error || undefined };
+    });
+  }
+
   function createMenu() {
     const template = [
-      { label: 'DeepSeek Harness', submenu: [{ label: '设置', accelerator: 'CmdOrCtrl+,', click: () => openSettingsWindow() }, { label: '重启 Harness 后端', click: () => restartBackend().catch((error) => showError(error)) }, { type: 'separator' }, { role: 'quit', label: '退出' }] },
+      { label: 'DeepSeek Harness', submenu: [{ label: '设置', accelerator: 'CmdOrCtrl+,', click: () => openSettingsWindow() }, { label: '重新启动 Harness 后端', click: () => restartBackend().catch((error) => showError(error)) }, { type: 'separator' }, { role: 'quit', label: '退出' }] },
+      { label: '工作台', submenu: [{ label: '打开已有项目', click: () => chooseExistingProject().catch((error) => showError(error)) }, { label: '插件', click: () => openMarketplaceWindow() }, { type: 'separator' }, { label: '切换任务侧栏', accelerator: 'CmdOrCtrl+Shift+B', click: () => toggleWorkbenchPart('railOpen') }, { label: '切换底部面板', accelerator: 'CmdOrCtrl+J', click: () => toggleWorkbenchPart('dockOpen') }] },
       { label: '帮助', submenu: [{ label: '打开工作区', click: () => shell.openPath(workspaceRoot) }, { label: '打开日志目录', click: () => shell.openPath(path.dirname(logger.file)) }] },
     ];
     Menu.setApplicationMenu(Menu.buildFromTemplate(template));
   }
 
+  function registerMarketplaceIpc() {
+    const handle = (name, fn) => ipcMain.handle(`marketplace:${name}`, async (_event, input) => fn(input || {}));
+    handle('listInstalled', () => marketplace.listInstalled());
+    handle('searchMarketplace', (input) => marketplace.searchMarketplace(input));
+    handle('inspectPlugin', (input) => marketplace.inspectPlugin(input));
+    handle('installPlugin', async (input) => { const result = await marketplace.installPlugin(input); await restartBackend(); return result; });
+    handle('uninstallPlugin', async (input) => { const result = await marketplace.uninstallPlugin(input); await restartBackend(); return result; });
+    handle('openExternal', async (input) => {
+      let url; try { url = new URL(String(input.url || '')); } catch { throw new Error('插件链接无效'); }
+      if (url.protocol !== 'https:') throw new Error('只允许打开 HTTPS 插件链接');
+      await shell.openExternal(url.toString()); return { ok: true };
+    });
+    handle('openPluginFolder', async (input) => {
+      const result = await marketplace.openPluginFolder(input);
+      const error = await shell.openPath(result.absolutePath);
+      return { ok: !error, error: error || undefined };
+    });
+  }
+
+  async function chooseExistingProject() {
+    const selection = await dialog.showOpenDialog(mainWindow, { title: '打开已有项目（使用同一真实目录）', defaultPath: workspaceRoot, properties: ['openDirectory'] });
+    if (selection.canceled || !selection.filePaths[0]) return { ok: false, canceled: true };
+    const nextRoot = path.resolve(selection.filePaths[0]);
+    const stat = await fsp.stat(nextRoot);
+    if (!stat.isDirectory()) throw new Error('选择的项目路径不是目录');
+    const previousRoot = workspaceRoot;
+    await store.save({ workspace: { ...store.getPreferences().workspace, path: nextRoot } });
+    await workbench.resetWorkspace(previousRoot);
+    await prepareWorkspace();
+    await workbench.initializeSharedProject();
+    await restartBackend();
+    return { ok: true, path: workspaceRoot, shared: await workbench.getSharedSnapshot(true) };
+  }
+
   async function prepareWorkspace() {
     const prefs = store.getPreferences();
-    workspaceRoot = prefs.workspace.path ? path.resolve(prefs.workspace.path) : path.join(app.getPath('documents'), 'DeepSeekHarnessWorkspace');
+    workspaceRoot = workspaceOverride || (prefs.workspace.path ? path.resolve(prefs.workspace.path) : path.join(app.getPath('documents'), 'DeepSeekHarnessWorkspace'));
     dshHome = path.join(workspaceRoot, '.dsh');
     await fsp.mkdir(workspaceRoot, { recursive: true });
     await fsp.mkdir(dshHome, { recursive: true });
@@ -239,9 +350,10 @@ if (!gotLock) {
       DSH_DESKTOP: '1',
       DSH_PERMISSION_MODE: prefs.workspace.allowShell ? 'workspace-write' : 'read-only',
       DEEPSEEK_BASE_URL: prefs.deepseek.baseURL,
-      ...(prefs.vision.enabled && store.getSecret('visionApiKey') ? { BIGMODEL_API_KEY: store.getSecret('visionApiKey') } : {}),
-      ...(prefs.vision.baseURL ? { BIGMODEL_BASE_URL: prefs.vision.baseURL } : {}),
-      ...(prefs.vision.model ? { BIGMODEL_MODEL: prefs.vision.model } : {}),
+      ...(prefs.vision.enabled && store.getSecret('visionApiKey') ? { VISION_API_KEY: store.getSecret('visionApiKey') } : {}),
+      ...(prefs.vision.baseURL ? { VISION_BASE_URL: prefs.vision.baseURL } : {}),
+      ...(prefs.vision.model ? { VISION_MODEL: prefs.vision.model } : {}),
+      ...(prefs.vision.provider ? { VISION_PROVIDER: prefs.vision.provider } : {}),
       ...(apiKey ? { DEEPSEEK_API_KEY: apiKey } : {}),
     };
     const args = [dshBin, 'web', '--host', '127.0.0.1', '--port', String(backendPort)];
@@ -291,7 +403,7 @@ if (!gotLock) {
 
   async function restartBackend() {
     try { await startBackend(); } catch (error) { logger.error(`Harness restart failed: ${error.code || error.message}`); await showError(error); throw error; }
-    if (mainWindow && !mainWindow.isDestroyed()) await mainWindow.loadURL(`http://127.0.0.1:${backendPort}/`);
+    if (harnessView && !harnessView.webContents.isDestroyed()) await loadHarnessView();
   }
 
   async function stopBackend() {
@@ -315,10 +427,62 @@ if (!gotLock) {
   }
 
   function createMainWindow() {
-    mainWindow = new BrowserWindow({ width: 1440, height: 920, minWidth: 980, minHeight: 650, title: 'DeepSeek Harness', backgroundColor: '#0d1117', show: false, webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, preload: path.join(__dirname, 'preload.cjs') } });
-    mainWindow.on('closed', () => { mainWindow = undefined; });
-    mainWindow.webContents.setWindowOpenHandler(({ url }) => { if (/^https?:/i.test(url)) shell.openExternal(url); return { action: 'deny' }; });
-    mainWindow.loadURL(`http://127.0.0.1:${backendPort}/`).then(() => mainWindow.show()).catch((error) => logger.error(`UI load failed: ${error.code || error.message}`));
+    mainWindow = new BrowserWindow({ width: 1480, height: 940, minWidth: 1040, minHeight: 680, title: 'DeepSeek Harness Workbench', backgroundColor: '#080b12', show: false, autoHideMenuBar: true, webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, preload: path.join(__dirname, 'workbench-preload.cjs') } });
+    mainWindow.setMenuBarVisibility(false);
+    harnessView = new WebContentsView({ webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true } });
+    mainWindow.contentView.addChildView(harnessView);
+    const guard = ({ url }) => {
+      if (/^https?:/i.test(url) && !isHarnessUrl(url)) shell.openExternal(url);
+      return { action: 'deny' };
+    };
+    mainWindow.webContents.setWindowOpenHandler(guard);
+    harnessView.webContents.setWindowOpenHandler(guard);
+    harnessView.webContents.on('will-navigate', (event, url) => {
+      if (!isHarnessUrl(url)) { event.preventDefault(); if (/^https?:/i.test(url)) shell.openExternal(url); }
+    });
+    mainWindow.on('resize', updateHarnessBounds);
+    mainWindow.on('closed', () => {
+      if (harnessView && !harnessView.webContents.isDestroyed()) harnessView.webContents.close();
+      harnessView = undefined;
+      mainWindow = undefined;
+    });
+    Promise.all([mainWindow.loadFile(path.join(__dirname, 'workbench.html')), loadHarnessView()])
+      .then(() => { updateHarnessBounds(); mainWindow.show(); })
+      .catch((error) => logger.error(`UI load failed: ${error.code || error.message}`));
+  }
+
+  function updateHarnessBounds() {
+    if (!mainWindow || mainWindow.isDestroyed() || !harnessView || harnessView.webContents.isDestroyed()) return;
+    const [width, height] = mainWindow.getContentSize();
+    const top = 52;
+    const rail = workbenchLayout.railOpen ? workbenchLayout.railWidth : 0;
+    const dock = workbenchLayout.dockOpen ? workbenchLayout.dockHeight : 0;
+    harnessView.setBounds({ x: 0, y: top, width: Math.max(360, width - rail), height: Math.max(260, height - top - dock) });
+  }
+
+  function toggleWorkbenchPart(part) {
+    workbenchLayout = { ...workbenchLayout, [part]: !workbenchLayout[part] };
+    updateHarnessBounds();
+    mainWindow?.webContents.send('workbench:layout', workbenchLayout);
+  }
+
+  function sanitizeWorkbenchLayout(input) {
+    return {
+      railOpen: input?.railOpen !== false,
+      dockOpen: Boolean(input?.dockOpen),
+      railWidth: Math.min(420, Math.max(296, Number(input?.railWidth) || 336)),
+      dockHeight: Math.min(360, Math.max(190, Number(input?.dockHeight) || 250)),
+    };
+  }
+
+  function isHarnessUrl(url) {
+    try { const parsed = new URL(url); return parsed.protocol === 'http:' && parsed.hostname === '127.0.0.1' && parsed.port === String(backendPort); }
+    catch { return false; }
+  }
+
+  function loadHarnessView() {
+    if (!harnessView || harnessView.webContents.isDestroyed()) return Promise.resolve();
+    return harnessView.webContents.loadURL(`http://127.0.0.1:${backendPort}/`);
   }
 
   function openSettingsWindow() {
@@ -329,6 +493,14 @@ if (!gotLock) {
   }
 
   function closeSettingsWindow() { if (settingsWindow && !settingsWindow.isDestroyed()) settingsWindow.close(); settingsWindow = undefined; }
+
+  function openMarketplaceWindow() {
+    if (marketplaceWindow && !marketplaceWindow.isDestroyed()) { marketplaceWindow.show(); marketplaceWindow.focus(); return; }
+    marketplaceWindow = new BrowserWindow({ width: 940, height: 760, minWidth: 700, minHeight: 560, title: 'Harness 插件', parent: mainWindow, modal: false, backgroundColor: '#090d16', webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, preload: path.join(__dirname, 'marketplace-preload.cjs') } });
+    marketplaceWindow.setMenuBarVisibility(false);
+    marketplaceWindow.on('closed', () => { marketplaceWindow = undefined; });
+    marketplaceWindow.loadFile(path.join(__dirname, 'marketplace.html'));
+  }
 
   async function testDeepSeek() {
     const prefs = store.getPreferences();

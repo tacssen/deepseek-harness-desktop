@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "projectId": "machine-local-hash",
+  "revision": 1,
+  "projectRootHint": ".",
+  "goal": "Example goal",
+  "currentAgent": null,
+  "lastHandoff": null,
+  "nextAction": "Review the worktree",
+  "updatedAt": "2026-01-01T00:00:00.000Z"
+}

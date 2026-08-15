@@ -1,10 +1,10 @@
 {
   "name": "deepseek-harness-desktop",
   "productName": "DeepSeek Harness Desktop",
-  "version": "0.1.0",
-  "description": "A small Windows desktop shell for the official DeepSeek Harness web profile.",
+  "version": "0.3.0",
+  "description": "A community Windows workbench shell for the official DeepSeek Harness web profile.",
   "main": "src/main.cjs",
-  "author": "DeepSeek Harness Desktop",
+  "author": "Harness Workbench contributors",
   "license": "MIT",
   "private": true,
   "type": "commonjs",
@@ -12,7 +12,8 @@
     "start": "electron .",
     "test": "node --test test/*.test.cjs",
     "prove:tool": "node scripts/prove-tool.cjs",
-    "lint": "node --check src/main.cjs && node --check src/preload.cjs && node --check src/settings-preload.cjs && node --check src/settings-renderer.js && node --check src/vision-bridge.cjs && node --check vision-plugin/index.mjs",
+    "security:scan": "node scripts/secret-scan.cjs",
+    "lint": "node --check src/main.cjs && node --check src/preload.cjs && node --check src/settings-preload.cjs && node --check src/settings-renderer.js && node --check src/vision-bridge.cjs && node --check src/workbench-service.cjs && node --check src/shared-context-service.cjs && node --check src/codex-app-server-client.cjs && node --check src/workbench-preload.cjs && node --check src/workbench-renderer.js && node --check src/marketplace-service.cjs && node --check src/marketplace-preload.cjs && node --check src/marketplace-renderer.js && node --check vision-plugin/index.mjs",
     "build": "npm run lint && node scripts/verify-build.cjs",
     "prepare-runtime": "node scripts/prepare-runtime.cjs",
     "dist": "npm run prepare-runtime && electron-builder --win nsis portable"
@@ -35,12 +36,12 @@
     "@deepseek-harness/vision-plugin": "file:vision-plugin",
     "chokidar": "4.0.3",
     "sharp": "0.35.3",
-    "yaml": "2.8.1",
+    "yaml": "2.9.0",
     "zod": "4.4.3"
   },
   "devDependencies": {
     "electron": "43.4.0",
-    "electron-builder": "26.0.12"
+    "electron-builder": "26.15.3"
   },
   "build": {
     "appId": "ai.deepseek.harness.desktop",
@@ -64,13 +65,43 @@
       {
         "from": "runtime-stage/node_modules",
         "to": "dsh-runtime/node_modules",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "LICENSE",
+        "to": "legal/LICENSE.txt"
+      },
+      {
+        "from": "THIRD_PARTY_NOTICES.md",
+        "to": "legal/THIRD_PARTY_NOTICES.md"
+      },
+      {
+        "from": "PRIVACY.md",
+        "to": "legal/PRIVACY.md"
+      },
+      {
+        "from": "node_modules/@deepseek-ai/dsh/LICENSE",
+        "to": "legal/DEEPSEEK_HARNESS_LICENSE.txt"
+      },
+      {
+        "from": "node_modules/electron/dist/LICENSE",
+        "to": "legal/ELECTRON_LICENSE.txt"
+      },
+      {
+        "from": "node_modules/electron/dist/LICENSES.chromium.html",
+        "to": "legal/LICENSES.chromium.html"
       }
     ],
     "files": [
+      "build/icon.png",
       "src/**/*",
       "vision-plugin/**/*",
       "scripts/**/*",
+      "LICENSE",
+      "THIRD_PARTY_NOTICES.md",
+      "PRIVACY.md",
       "package.json",
       "node_modules/@deepseek-ai/dsh/**/*",
       "node_modules/@deepseek-ai/**/*",
@@ -84,6 +115,7 @@
       "node_modules/@img/**/*"
     ],
     "win": {
+      "icon": "build/icon.png",
       "target": [
         {
           "target": "nsis",

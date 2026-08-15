@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <defs>
+    <linearGradient id="bg" x1="28" y1="20" x2="226" y2="238" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#16283b"/>
+      <stop offset="1" stop-color="#070b12"/>
+    </linearGradient>
+    <linearGradient id="bridge" x1="70" y1="128" x2="188" y2="128" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#81c7ff"/>
+      <stop offset="1" stop-color="#b8dcff"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="240" height="240" rx="58" fill="url(#bg)"/>
+  <rect x="8.75" y="8.75" width="238.5" height="238.5" rx="57.25" fill="none" stroke="#b6d9f7" stroke-opacity=".18" stroke-width="1.5"/>
+  <circle cx="128" cy="128" r="78" fill="none" stroke="#b6d9f7" stroke-opacity=".09" stroke-width="2"/>
+  <path d="M78 72v112M178 72v112" fill="none" stroke="#f5f9ff" stroke-width="24" stroke-linecap="round"/>
+  <path d="M83 128h90" fill="none" stroke="url(#bridge)" stroke-width="22" stroke-linecap="round"/>
+  <circle cx="194" cy="61" r="11" fill="#81c7ff"/>
+</svg>

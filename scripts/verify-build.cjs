@@ -4,6 +4,11 @@ const path = require('node:path');
 const root = path.resolve(__dirname, '..');
 const required = [
   'package.json',
+  'LICENSE',
+  'THIRD_PARTY_NOTICES.md',
+  'node_modules/@deepseek-ai/dsh/LICENSE',
+  'node_modules/electron/dist/LICENSES.chromium.html',
+  'build/icon.png',
   'src/main.cjs',
   'src/preload.cjs',
   'src/settings.html',
@@ -11,6 +16,18 @@ const required = [
   'src/settings-preload.cjs',
   'src/secure-store.cjs',
   'src/vision-bridge.cjs',
+  'src/workbench-service.cjs',
+  'src/workbench-preload.cjs',
+  'src/workbench-renderer.js',
+  'src/workbench.css',
+  'src/workbench.html',
+  'src/shared-context-service.cjs',
+  'src/codex-app-server-client.cjs',
+  'src/marketplace.html',
+  'src/marketplace-service.cjs',
+  'src/marketplace.css',
+  'src/marketplace-renderer.js',
+  'src/marketplace-preload.cjs',
   'node_modules/@deepseek-ai/dsh/lib/bin.js',
 ];
 for (const relative of required) {

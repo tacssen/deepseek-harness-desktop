@@ -7,8 +7,9 @@
     $('deepseekBaseURL').value = d.baseURL || 'https://api.deepseek.com';
     $('deepseekModel').value = d.model || 'deepseek-v4-flash';
     $('visionEnabled').checked = Boolean(v.enabled);
-    $('visionBaseURL').value = v.baseURL || 'https://open.bigmodel.cn/api/paas/v4/chat/completions';
-    $('visionModel').value = v.model || 'glm-4.6v-flash';
+    $('visionProvider').value = v.provider || 'siliconflow';
+    $('visionBaseURL').value = v.baseURL || 'https://api.siliconflow.cn/v1/chat/completions';
+    $('visionModel').value = v.model || 'zai-org/GLM-4.5V';
     $('workspacePath').value = w.path || '';
     $('allowShell').checked = w.allowShell !== false;
     $('debugEnabled').checked = Boolean(debug.enabled);
@@ -19,7 +20,7 @@
   $('save').addEventListener('click', async () => {
     const value = {
       deepseek: { baseURL: $('deepseekBaseURL').value.trim(), model: $('deepseekModel').value },
-      vision: { enabled: $('visionEnabled').checked, baseURL: $('visionBaseURL').value.trim(), model: $('visionModel').value.trim() },
+      vision: { enabled: $('visionEnabled').checked, provider: $('visionProvider').value, baseURL: $('visionBaseURL').value.trim(), model: $('visionModel').value.trim() },
       workspace: { path: $('workspacePath').value.trim(), allowShell: $('allowShell').checked },
       debug: { enabled: $('debugEnabled').checked },
     };

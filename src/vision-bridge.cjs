@@ -22,8 +22,8 @@ function validateImage(input, mime) {
   if (normalizedMime === 'image/jpg') normalizedMime = 'image/jpeg';
   if (buffer.length === 0 || buffer.length > MAX_BYTES) throw new Error('Vision image must be between 1 byte and 5 MB');
   const dimensions = imageDimensions(buffer, normalizedMime);
-  if (!dimensions || dimensions.width < 20 || dimensions.height < 20 || dimensions.width > 6000 || dimensions.height > 6000) {
-    throw new Error('Vision image dimensions must be between 20x20 and 6000x6000 pixels');
+  if (!dimensions || dimensions.width < 28 || dimensions.height < 28 || dimensions.width > 6000 || dimensions.height > 6000) {
+    throw new Error('Vision image dimensions must be between 28x28 and 6000x6000 pixels');
   }
   return { buffer, mime: normalizedMime, ...dimensions };
 }
@@ -76,7 +76,7 @@ class VisionBridge {
     const key = this.store.getSecret('visionApiKey');
     if (!key) return { ok: false, status: 'Awaiting API Key', code: 'MISSING_CREDENTIAL' };
     // A valid 20x20 PNG satisfies the provider minimum image dimensions.
-    const pixel = makePng(20, 20);
+    const pixel = makePng(56, 56);
     try {
       const response = await this.callProvider(settings, key, dataURL(pixel, 'image/png'), 'Reply with the single word OK.');
       return { ok: true, status: 'Vision Ready', model: settings.model, preview: response.text.slice(0, 120) };

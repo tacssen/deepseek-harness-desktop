@@ -8,18 +8,18 @@ const { redact } = require('../src/logger.cjs');
 const { SecureStore } = require('../src/secure-store.cjs');
 
 test('vision validates MIME and 5 MB boundary and emits data URL', () => {
-  const input = makePng(20, 20);
+  const input = makePng(28, 28);
   const result = validateImage(input, 'image/png');
   assert.equal(result.mime, 'image/png');
   assert.match(dataURL(result.buffer, result.mime), /^data:image\/png;base64,/);
-  assert.throws(() => validateImage(Buffer.concat([makePng(20, 20), Buffer.alloc(MAX_BYTES)]), 'image/png'), /5 MB/);
+  assert.throws(() => validateImage(Buffer.concat([makePng(28, 28), Buffer.alloc(MAX_BYTES)]), 'image/png'), /5 MB/);
   assert.throws(() => validateImage(input, 'text/plain'), /MIME/);
 });
 
 test('logs redact bearer/API key material', () => {
-  const value = redact('Authorization: Header fixture-vision-secret apiKey=fixture-other-secret');
-  assert.ok(!value.includes('super-secret'));
-  assert.ok(!value.includes('other-secret'));
+  const value = redact('Authorization: Bearer short-test apiKey=test-private-value');
+  assert.ok(!value.includes('short-test'));
+  assert.ok(!value.includes('private-value'));
   assert.match(value, /REDACTED/);
 });
 

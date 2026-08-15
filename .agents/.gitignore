@@ -1,0 +1,10 @@
+# Private, machine-local Agent relay state
+/locks/
+/sessions/
+/checkpoints/
+/project-state.json
+/HANDOFF.md
+/TASKS.md
+/MEMORY.md
+/TESTS.md
+/codex-session-index.json

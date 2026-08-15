@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' data: blob:;">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DeepSeek Harness 工作台</title>
+  <link rel="stylesheet" href="workbench.css">
+</head>
+<body>
+  <div class="app-shell" id="appShell" data-rail-open="true" data-dock-open="false">
+    <header class="topbar" aria-label="应用工具栏">
+      <div class="brand-lockup">
+        <div class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" focusable="false"><path d="M5.3 15.8c2.6 2.1 6.4 2.4 9.5.8 2.6-1.4 4.1-3.6 4.4-6.1-1.2.6-2.3.8-3.2.5.2-1.5-.2-2.9-1.3-4.2-.3 1.5-1.1 2.6-2.5 3.3.1-1.4-.5-2.8-1.8-4-1.2 2.2-3.1 3.5-5.4 4-.5 1.8-.4 3.6.3 5.7Zm2.4.4c.4-1.5 1.2-2.7 2.5-3.5 1.7-.9 3.6-.5 4.7.6-1.8 1.6-4.2 2.4-7.2 2.9Z"/></svg>
+        </div>
+        <div class="brand-name"><strong>DeepSeek</strong><span>Harness</span></div>
+      </div>
+
+      <div class="mode-switch" role="group" aria-label="Agent 模式">
+        <button class="mode-button is-active" type="button" data-mode="chat" aria-pressed="true">Chat</button>
+        <button class="mode-button" type="button" data-mode="plan" aria-pressed="false">Plan</button>
+        <button class="mode-button" type="button" data-mode="goal" aria-pressed="false">Goal</button>
+      </div>
+
+      <div class="topbar-spacer"></div>
+      <div class="workspace-chip" title="当前工作区">
+        <span class="status-dot is-muted" id="backendDot" aria-hidden="true"></span>
+        <span class="workspace-label" id="workspaceName">DeepSeekHarnessWorkspace</span>
+        <span class="workspace-status" id="backendStatus">连接中</span>
+      </div>
+      <button class="topbar-icon-button" id="fileSearchButton" type="button" aria-label="搜索工作区文件" title="搜索文件 (Ctrl+K)">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.3"></circle><path d="m16 16 4.6 4.6"></path></svg><span class="shortcut-hint">Ctrl K</span>
+      </button>
+      <button class="topbar-icon-button" id="attachButton" type="button" aria-label="添加附件" title="添加附件">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m19.5 11.5-7.8 7.8a5 5 0 0 1-7.1-7.1l8.1-8.1a3.5 3.5 0 0 1 5 5l-8.2 8.2a2 2 0 0 1-2.8-2.8l7.1-7.1"></path></svg>
+      </button>
+      <button class="topbar-icon-button" id="settingsButton" type="button" aria-label="打开设置" title="设置">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8.7a3.3 3.3 0 1 0 0 6.6 3.3 3.3 0 0 0 0-6.6Z"></path><path d="m19.1 13.4 1.2 1-.9 1.6-1.5-.5a7 7 0 0 1-1.5 1.5l.5 1.5-1.6.9-1-1.2a7 7 0 0 1-2 .3l-.5 1.5h-1.9l-.5-1.5a7 7 0 0 1-2-.8l-1.2.9-1.4-1.2.7-1.4a7 7 0 0 1-1.1-1.8l-1.6-.2-.2-1.9 1.5-.5a7 7 0 0 1 .3-2.1l-1.2-1 .9-1.6 1.5.5A7 7 0 0 1 7.1 6l-.5-1.5 1.6-.9 1 1.2a7 7 0 0 1 2-.3l.5-1.5h1.9l.5 1.5a7 7 0 0 1 2 .8l1.2-.9 1.4 1.2-.7 1.4a7 7 0 0 1 1.1 1.8l1.6.2.2 1.9-1.5.5a7 7 0 0 1-.3 2Z"></path></svg>
+      </button>
+      <button class="topbar-icon-button topbar-toggle" id="railToggle" type="button" aria-label="切换右侧面板" aria-expanded="true" title="右侧面板 (Ctrl+Shift+B)">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2"></rect><path d="M15 4v16M9 9l3 3-3 3"></path></svg>
+      </button>
+    </header>
+
+    <div class="workspace-layout">
+      <main class="core-slot" id="coreSlot" aria-label="官方 Harness 工作区">
+        <div class="core-fallback" id="coreFallback" aria-live="polite">
+          <div class="fallback-mark" aria-hidden="true"><span></span><span></span><span></span></div>
+          <h1>正在连接 Harness</h1>
+          <p>官方 DeepSeek Harness 将在这里运行。右侧面板和底栏可随时收起。</p>
+          <div class="fallback-line"><span class="status-dot is-muted"></span><span id="fallbackStatus">等待本地后端 Ready…</span></div>
+        </div>
+        <!-- Electron WebContentsView is positioned over this slot by the host. -->
+      </main>
+
+      <aside class="right-rail" id="rightRail" aria-label="Agent 工作台面板">
+        <div class="rail-header">
+          <div><span class="eyebrow">WORKBENCH</span><h2>Agent 面板</h2><p class="disclaimer">社区维护 · 非 DeepSeek 官方桌面版</p></div>
+          <button class="quiet-button" id="railClose" type="button" aria-label="收起右侧面板" title="收起"><span aria-hidden="true">×</span></button>
+        </div>
+        <div class="rail-tabs" role="tablist" aria-label="工作台面板">
+          <button class="rail-tab is-active" role="tab" aria-selected="true" aria-controls="railPanelTasks" data-rail-tab="tasks">任务<span class="tab-count" id="todoCount">0</span></button>
+          <button class="rail-tab" role="tab" aria-selected="false" aria-controls="railPanelTimeline" data-rail-tab="timeline">轨迹</button>
+          <button class="rail-tab" role="tab" aria-selected="false" aria-controls="railPanelDiffs" data-rail-tab="diffs">更改<span class="tab-count" id="diffCount">0</span></button>
+          <button class="rail-tab" role="tab" aria-selected="false" aria-controls="railPanelContext" data-rail-tab="context">上下文</button>
+          <button class="rail-tab" role="tab" aria-selected="false" aria-controls="railPanelSkills" data-rail-tab="skills">能力</button>
+        </div>
+        <div class="rail-content">
+          <section class="rail-panel is-active" id="railPanelTasks" role="tabpanel" data-rail-panel="tasks">
+            <div class="panel-heading"><div><span class="eyebrow">CURRENT GOAL</span><h3 id="goalTitle">当前任务</h3></div><span class="state-badge" id="goalState">空闲</span></div>
+            <div id="goalSummary" class="goal-summary empty-state">从顶部选择 Goal，或者直接在官方 Harness 开始对话。</div>
+            <div class="shared-project" id="sharedProject">
+              <div class="shared-project-head"><div><span class="eyebrow">SHARED PROJECT</span><strong id="sharedProjectName">当前项目</strong></div><span class="state-badge" id="sharedAgentState">未初始化</span></div>
+              <p id="sharedHandoff" class="shared-handoff">使用同一真实目录，在 Codex 与 DeepSeek 之间交接。</p>
+              <dl class="shared-facts"><div><dt>Git</dt><dd id="sharedGit">—</dd></div><div><dt>Last Handoff</dt><dd id="sharedHandoffTime">—</dd></div><div><dt>Next</dt><dd id="sharedNext">—</dd></div></dl>
+              <label class="codex-task-picker" id="codexTaskPicker" hidden><span>Codex task（官方只读）</span><select id="codexTaskSelect" aria-label="选择要继续的 Codex task"></select></label>
+              <div class="shared-actions"><button class="secondary-button" type="button" data-action="open-project">打开已有项目</button><button class="secondary-button" type="button" data-action="continue-codex">Continue From Codex</button><button class="primary-small" type="button" data-action="handoff-codex">Prepare Handoff</button></div>
+              <p class="shared-note" id="codexReadMode">项目 Handoff 是真源；Codex 私有聊天仅通过官方只读接口按需读取。</p>
+            </div>
+            <div class="section-label"><span>Todo</span><span class="muted-inline" id="todoProgress">—</span></div>
+            <ol class="todo-list" id="todoList"><li class="empty-state">尚未收到任务清单</li></ol>
+            <div class="panel-actions"><button class="text-button" data-action="checkpoint"><span class="action-glyph">⌁</span>创建 checkpoint</button><button class="text-button" data-action="open-workspace">打开工作区</button><button class="text-button" data-action="marketplace">插件</button></div>
+          </section>
+          <section class="rail-panel" id="railPanelTimeline" role="tabpanel" data-rail-panel="timeline" hidden>
+            <div class="panel-heading"><div><span class="eyebrow">EXECUTION</span><h3>执行轨迹</h3></div><span class="muted-inline" id="timelineCount">0 项</span></div>
+            <div class="timeline-list" id="timelineList"><div class="empty-state">Agent 运行后，工具调用和思考会出现在这里。</div></div>
+          </section>
+          <section class="rail-panel" id="railPanelDiffs" role="tabpanel" data-rail-panel="diffs" hidden>
+            <div class="panel-heading"><div><span class="eyebrow">WORKTREE</span><h3>文件更改</h3></div><span class="muted-inline" id="diffSummary">干净</span></div>
+            <div id="diffList" class="diff-list"><div class="empty-state">当前没有可审阅的更改。</div></div>
+          </section>
+          <section class="rail-panel" id="railPanelContext" role="tabpanel" data-rail-panel="context" hidden>
+            <div class="panel-heading"><div><span class="eyebrow">CONTEXT</span><h3>上下文</h3></div><span class="muted-inline" id="contextPressure">—</span></div>
+            <div class="context-meter"><div class="context-meter-fill" id="contextMeterFill"></div></div>
+            <div class="context-total" id="contextTotal">尚无上下文统计</div>
+            <div class="context-breakdown" id="contextBreakdown"></div>
+            <div class="section-label context-subhead">本轮统计</div><div class="stats-grid" id="sessionStats"></div>
+          </section>
+          <section class="rail-panel" id="railPanelSkills" role="tabpanel" data-rail-panel="skills" hidden>
+            <div class="panel-heading"><div><span class="eyebrow">EXTENSIONS</span><h3>能力</h3></div><span class="muted-inline" id="skillsCount">0</span></div>
+            <label class="inline-search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.3"></circle><path d="m16 16 4.6 4.6"></path></svg><input id="skillSearch" type="search" placeholder="搜索 Skills" aria-label="搜索 Skills"></label>
+            <div id="skillsList" class="skills-list"><div class="empty-state">没有暴露可用能力。</div></div>
+            <div class="mcp-section"><div class="section-label"><span>MCP</span><span class="muted-inline" id="mcpCount">0 个连接</span></div><div id="mcpList" class="mcp-list"><div class="empty-state">没有 MCP 连接</div></div><button class="text-button" data-action="open-settings">打开配置</button></div>
+          </section>
+        </div>
+      </aside>
+    </div>
+
+    <footer class="bottom-dock" id="bottomDock" aria-label="诊断底栏">
+      <div class="dock-header"><div class="dock-tabs" role="tablist" aria-label="诊断工具"><button class="dock-tab is-active" role="tab" aria-selected="true" data-dock-tab="terminal">终端</button><button class="dock-tab" role="tab" aria-selected="false" data-dock-tab="problems">问题<span class="tab-count" id="problemCount">0</span></button><button class="dock-tab" role="tab" aria-selected="false" data-dock-tab="logs">日志</button><button class="dock-tab" role="tab" aria-selected="false" data-dock-tab="git">Git Diff</button></div><button class="quiet-button" id="dockClose" type="button" aria-label="关闭底部面板" title="关闭"><span aria-hidden="true">×</span></button></div>
+      <div class="dock-panel is-active" id="dockPanelTerminal" data-dock-panel="terminal" role="tabpanel">
+        <div class="terminal-output" id="terminalOutput"><div class="terminal-placeholder">命令会交给当前 Agent，通过 Harness 的 PowerShell 工具和权限策略执行。</div></div>
+        <form class="terminal-form" id="terminalForm"><span class="terminal-prompt">PS&gt;</span><input id="terminalInput" autocomplete="off" spellcheck="false" placeholder="输入 PowerShell 命令…" aria-label="终端命令"><button type="submit" class="run-button">交给 Agent</button></form>
+      </div>
+      <div class="dock-panel" id="dockPanelProblems" data-dock-panel="problems" role="tabpanel" hidden><div class="problem-list" id="problemList"><div class="empty-state">没有检测到问题。</div></div></div>
+      <div class="dock-panel" id="dockPanelLogs" data-dock-panel="logs" role="tabpanel" hidden><div class="log-list" id="logList"><div class="empty-state">暂无运行日志。</div></div></div>
+      <div class="dock-panel" id="dockPanelGit" data-dock-panel="git" role="tabpanel" hidden><div class="git-diff-output" id="gitDiffOutput"><div class="empty-state">暂无 Git Diff。</div></div></div>
+    </footer>
+  </div>
+
+  <div class="overlay" id="fileSearchOverlay" hidden>
+    <section class="command-popover" role="dialog" aria-modal="true" aria-labelledby="fileSearchTitle">
+      <div class="popover-heading"><div><span class="eyebrow">WORKSPACE</span><h2 id="fileSearchTitle">引用文件</h2></div><button class="quiet-button" data-close-overlay="fileSearchOverlay" aria-label="关闭文件搜索">×</button></div>
+      <label class="command-search"><span>@</span><input id="fileSearchInput" type="search" placeholder="搜索文件或目录…" autocomplete="off" aria-label="搜索工作区文件"><kbd>Esc</kbd></label>
+      <div id="fileSearchResults" class="file-search-results"><div class="empty-state">输入关键词开始搜索。</div></div>
+      <p class="popover-hint">Enter 插入引用 · 图片可在附件区调用 Vision</p>
+    </section>
+  </div>
+
+  <div class="overlay" id="goalOverlay" hidden>
+    <section class="command-popover goal-popover" role="dialog" aria-modal="true" aria-labelledby="goalDialogTitle">
+      <div class="popover-heading"><div><span class="eyebrow">AUTONOMOUS RUN</span><h2 id="goalDialogTitle">设定 Goal</h2></div><button class="quiet-button" data-close-overlay="goalOverlay" aria-label="关闭 Goal 对话框">×</button></div>
+      <p class="goal-copy">给 Agent 一个清晰的最终结果；它会在执行前先生成计划。</p>
+      <form id="goalForm"><textarea id="goalInput" rows="4" maxlength="1200" placeholder="例如：检查当前项目的 Vision 配置，修复测试失败并完成验收…" required></textarea><div class="goal-form-footer"><span class="muted-inline">Goal 不会在空目标下启动</span><button class="primary-button" type="submit">开始 Goal</button></div></form>
+    </section>
+  </div>
+
+  <div class="toast-region" id="toastRegion" aria-live="polite" aria-atomic="true"></div>
+  <script src="workbench-renderer.js"></script>
+</body>
+</html>
