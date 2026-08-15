@@ -64,16 +64,16 @@
 
 在你选择的目录执行：
 
-    git clone <repository-url>
-    cd DeepSeekHarnessDesktop
+    git clone https://github.com/tacssen/deepseek-harness-desktop.git
+    cd deepseek-harness-desktop
     npm ci
     npm test
     npm run build
     npm start
 
 不要把实际用户目录、API key、settings.secure.json、Workspace、日志或
-截图复制到 issue、commit 或公开文档；上面的 <repository-url> 和当前目录
-只是示例占位符。构建及 Windows 安装说明见 docs/install.md 和
+截图复制到 issue、commit 或公开文档；上面的仓库地址是本项目公开仓库，
+当前目录名可以按你的环境调整。构建及 Windows 安装说明见 docs/install.md 和
 docs/windows.md。
 
 ## 第一次启动

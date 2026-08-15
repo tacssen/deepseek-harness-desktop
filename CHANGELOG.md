@@ -12,7 +12,11 @@
 - 明确第三方身份、隐私边界、动态路径要求以及 SiliconFlow/BigModel
   条款需人工确认。
 
-## [0.4.0] — 本地验收，未发布
+## [0.4.0] — 2026-08-15
+
+正式公开发布。Windows NSIS/Portable 安装包、SHA256SUMS 和 SBOM 随 GitHub
+Release 提供；本项目仍是基于官方 DeepSeek Harness Developer Preview/RC 的
+第三方桌面封装，不代表 DeepSeek 官方桌面版或官方背书。
 
 - 五级 Agent Level：Low/Medium/High/Extra High/Max，真实改变 Desktop 执行预算、并行工具和验证/修复策略；
 - Usage & Billing：真实 session/API usage、版本化 pricing metadata、Estimated Cost 和诚实的余额不可用状态；
