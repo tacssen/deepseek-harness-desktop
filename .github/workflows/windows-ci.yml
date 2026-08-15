@@ -19,6 +19,8 @@ jobs:
           node-version: '24'
           cache: npm
       - run: npm ci
+      - name: Ensure Electron runtime and license notices
+        run: node node_modules/electron/install.js
       - run: npm audit --omit=dev --audit-level=high
       - run: npm run security:scan
       - run: npm test
