@@ -231,14 +231,10 @@ NSIS 在本机 unattended `/S` 的交互行为不稳定（返回非零/不总是
 4. Codex 原始聊天不会被复制进项目；继续强化结构化 handoff、冲突提示和用户选择式摘要。
 5. 插件 allowlist 需要逐个审计后才可增加；默认空 allowlist 是有意的安全状态。
 6. 公开 GitHub 前应在干净机器做安装/卸载/升级、license 人工复核、SBOM、CI secret scan、
-   reproducible build 和截图脱敏；本轮不创建 remote、不 push、不发布 Release。
+   reproducible build 和截图脱敏；远程发布、CI 和下载验证结果见 GITHUB_RELEASE_V0.4_REPORT.md。
 
-## 14. Git 本地状态
+## 14. 发布前状态
 
-- 当前分支：本地工作分支（无 remote）；
-- 实现 commit：`ea49c54 feat: productize desktop workbench 0.4.0 (post-audit history)`；
-- 报告 commit：本报告随后作为独立本地 commit 加入；
-- 允许的操作：本地 commit；
-- 禁止的操作：`git push`、创建公开仓库、上传安装包、上传 API Key；
-- 最终实现 commit 和报告 commit 以 `git log -1 --oneline` 为准，报告自身不包含任何
-  credential、DPAPI ciphertext、Cookie、私有 Workspace 或 Codex 原始聊天。
+- 本报告记录发布前的本地验收快照；远程仓库、Tag、Release、CI 和下载校验以 `GITHUB_RELEASE_V0.4_REPORT.md` 为准；
+- 发布前历史已重写并完成敏感信息复扫；当前发布 commit 由 `git log -1 --oneline` 确认；
+- 报告自身不包含任何 credential、DPAPI ciphertext、Cookie、私有 Workspace 或 Codex 原始聊天。
